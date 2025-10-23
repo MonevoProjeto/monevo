@@ -47,6 +47,10 @@ class MetaUpdate(BaseModel):
     valor_atual: Optional[float] = Field(None, ge=0, le=1_000_000)
     prazo: Optional[date] = None
 
+
+
+
+
 from pydantic import BaseModel, Field, condecimal, validator
 from datetime import date, datetime
 from typing import Optional

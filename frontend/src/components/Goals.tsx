@@ -24,7 +24,7 @@ interface GoalsProps {
 
 const Goals = ({ onNavigate }: GoalsProps) => {
   const [activeGoal, setActiveGoal] = useState<string | null>(null);
-  const { goals } = useApp();
+  const { goals, loading, error, refreshGoals, deleteGoal } = useApp();
 
   const iconMap = {
     Plane,
@@ -60,6 +60,62 @@ const Goals = ({ onNavigate }: GoalsProps) => {
     goals.reduce((acc, goal) => acc + calculateProgress(goal.current, goal.target), 0) / goals.length : 0;
 
   const goalsOnTrack = goals.filter(goal => calculateProgress(goal.current, goal.target) >= 20).length;
+
+  // Loading state
+  if (loading) {
+    return (
+      <div className="p-4 space-y-6 animate-fade-in">
+        <div className="bg-gradient-to-r from-monevo-blue to-monevo-lightBlue rounded-lg p-6 text-white">
+          <div className="flex items-center justify-between mb-4">
+            <div>
+              <h1 className="text-2xl font-bold mb-2">Suas Metas</h1>
+              <p className="text-blue-100">Carregando suas metas...</p>
+            </div>
+            <Target className="h-8 w-8 text-blue-200" />
+          </div>
+        </div>
+        <div className="flex justify-center items-center py-12">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-monevo-blue"></div>
+        </div>
+      </div>
+    );
+  }
+
+  // Error state
+  if (error) {
+    return (
+      <div className="p-4 space-y-6 animate-fade-in">
+        <div className="bg-gradient-to-r from-monevo-blue to-monevo-lightBlue rounded-lg p-6 text-white">
+          <div className="flex items-center justify-between mb-4">
+            <div>
+              <h1 className="text-2xl font-bold mb-2">Suas Metas</h1>
+              <p className="text-blue-100">Erro ao carregar metas</p>
+            </div>
+            <Target className="h-8 w-8 text-blue-200" />
+          </div>
+        </div>
+        <div className="bg-red-50 border border-red-200 rounded-lg p-4">
+          <div className="flex items-center gap-3">
+            <div className="text-red-600">
+              <svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L3.732 16.5c-.77.833.192 2.5 1.732 2.5z" />
+              </svg>
+            </div>
+            <div>
+              <h3 className="text-red-800 font-medium">Erro ao carregar metas</h3>
+              <p className="text-red-600 text-sm mt-1">{error}</p>
+              <button 
+                onClick={refreshGoals}
+                className="mt-2 text-sm text-red-700 hover:text-red-800 underline"
+              >
+                Tentar novamente
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="p-4 space-y-6 animate-fade-in">
@@ -180,6 +236,13 @@ const Goals = ({ onNavigate }: GoalsProps) => {
                       <Button size="sm" variant="outline" className="flex-1">
                         Ajustar Meta
                       </Button>
+                      <Button
+                        size="sm" variant="destructive" className="flex-1" 
+                        onClick={() => deleteGoal(goal.id)}
+                      >
+                        Excluir Meta
+                      </Button>
+                      
                     </div>
                   </div>
                 )}

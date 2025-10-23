@@ -7,7 +7,7 @@ import os
 from datetime import datetime, date
 from passlib.hash import bcrypt
 
-from models import Meta, MetaCreate, CategoriaRead, CategoriaCreate, CategoriaUpdate, ContaCreate, ContaRead, ContaUpdate,RecorrenciaCreate, RecorrenciaRead, RecorrenciaUpdate, TransacaoCreate, TransacaoRead, TransacaoUpdate, FaturaRead
+from models import Meta, MetaCreate, MetaUpdate, CategoriaRead, CategoriaCreate, CategoriaUpdate, ContaCreate, ContaRead, ContaUpdate,RecorrenciaCreate, RecorrenciaRead, RecorrenciaUpdate, TransacaoCreate, TransacaoRead, TransacaoUpdate, FaturaRead
 
 from database import get_db, create_tables, populate_initial_data, Conta, Recorrencia, Categoria, Transacao, MetaTable, UsuarioTable
 
@@ -18,9 +18,10 @@ app = FastAPI(title="Monevo API", version="1.0.0")
 
 # ajuste as origens conforme seu ambiente
 ALLOWED_ORIGINS = [
-    "http://localhost:5173",   # Vite dev
-    "http://localhost:3000",   # CRA dev (se usar)
-    # "https://seu-dominio-front.com",   # produção (quando publicar)
+        "http://localhost:5173",   # se estiver usando Vite padrão
+        "http://127.0.0.1:5173",   # se acessar pelo 127
+        "http://localhost:8080",   # o seu caso atual
+        "http://127.0.0.1:8080",   # segurança extra
 ]
 
 
@@ -82,6 +83,41 @@ def buscar_meta(meta_id: int, db: Session = Depends(get_db)):
     return m
 
 
+@app.patch("/metas/{meta_id}", response_model=Meta)
+def atualizar_meta(meta_id: int, payload: MetaUpdate, db: Session = Depends(get_db)):
+    m = db.query(MetaTable).filter(MetaTable.id == meta_id).first()
+    if not m:
+        raise HTTPException(status_code=404, detail="Meta não encontrada")
+
+    data = payload.dict(exclude_unset=True)
+
+    # Regra: valor_atual não pode exceder valor_objetivo (considera valores novos ou atuais)
+    novo_valor_atual = data.get("valor_atual", m.valor_atual)
+    novo_valor_objetivo = data.get("valor_objetivo", m.valor_objetivo)
+    if (
+        novo_valor_atual is not None
+        and novo_valor_objetivo is not None
+        and novo_valor_atual > novo_valor_objetivo
+    ):
+        raise HTTPException(status_code=422, detail="valor_atual não pode ser maior que valor_objetivo")
+
+    for k, v in data.items():
+        setattr(m, k, v)
+
+    db.add(m)
+    db.commit()
+    db.refresh(m)
+    return m
+
+
+@app.delete("/metas/{meta_id}", status_code=204)
+def deletar_meta(meta_id: int, db: Session = Depends(get_db)):
+    m = db.query(MetaTable).filter(MetaTable.id == meta_id).first()
+    if not m:
+        raise HTTPException(status_code=404, detail="Meta não encontrada")
+    db.delete(m)
+    db.commit()
+    return {}
 
 app.add_middleware(
     CORSMiddleware,

@@ -1,4 +1,3 @@
-
 import { useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -42,33 +41,41 @@ const AddGoal = ({ onClose }: AddGoalProps) => {
     { id: "education", label: "Educação", icon: GraduationCap, color: "text-indigo-600", bgColor: "bg-indigo-50", borderColor: "border-indigo-200" }
   ];
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
     const selectedCategoryData = categories.find(cat => cat.id === selectedCategory);
     if (!selectedCategoryData) return;
 
-    const newGoal = {
-      title: goalTitle,
-      description: `Meta de ${selectedCategoryData.label.toLowerCase()}`,
-      target: parseFloat(goalAmount),
-      current: parseFloat(currentAmount) || 0,
-      deadline: goalDeadline,
-      category: selectedCategoryData.label,
-      icon: selectedCategoryData.icon.name,
-      color: selectedCategoryData.color,
-      bgColor: selectedCategoryData.bgColor,
-      borderColor: selectedCategoryData.borderColor
-    };
+    try {
+      const newGoal = {
+        title: goalTitle,
+        description: `Meta de ${selectedCategoryData.label.toLowerCase()}`,
+        target: parseFloat(goalAmount),
+        current: parseFloat(currentAmount) || 0,
+        deadline: goalDeadline,
+        category: selectedCategoryData.label,
+        icon: selectedCategoryData.icon.name,
+        color: selectedCategoryData.color,
+        bgColor: selectedCategoryData.bgColor,
+        borderColor: selectedCategoryData.borderColor
+      };
 
-    addGoal(newGoal);
-    
-    toast({
-      title: "Meta criada com sucesso!",
-      description: `A meta "${goalTitle}" foi adicionada às suas metas.`,
-    });
+      await addGoal(newGoal);
+      
+      toast({
+        title: "Meta criada com sucesso!",
+        description: `A meta "${goalTitle}" foi adicionada às suas metas.`,
+      });
 
-    onClose();
+      onClose();
+    } catch (error) {
+      toast({
+        title: "Erro ao criar meta",
+        description: "Não foi possível criar a meta. Tente novamente.",
+        variant: "destructive",
+      });
+    }
   };
 
   const selectedCategoryData = categories.find(cat => cat.id === selectedCategory);
