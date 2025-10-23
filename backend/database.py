@@ -238,7 +238,7 @@ class Transacao(Base):
 
     # Categoria: referência à tabela categorias
     categoria_id = Column(Integer, ForeignKey("categorias.id"), nullable=True)
-    categoria = relationship("Categoria", lazy="joined")
+    categoria_rel = relationship("Categoria", lazy="joined")
     categoria_cache = Column(String(120), nullable=True)  # texto redundante para listagens rápidas
 
     descricao = Column(Text, nullable=True)

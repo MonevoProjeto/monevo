@@ -12,6 +12,15 @@ import { ptBR } from "date-fns/locale";
 import { cn } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
 import CategorySelector from "./CategorySelector";
+const API_URL = import.meta.env.VITE_API_URL ?? "http://127.0.0.1:8000";
+const DEFAULT_USER_ID = Number(import.meta.env.VITE_DEFAULT_USER_ID ?? 1);
+
+// + novo
+const mapTypeToBackend = (t: string) => {
+  if (t === "income") return "receita";
+  if (t === "expense") return "despesa";
+  return "investimento"; // "investment"
+};
 
 interface AddTransactionProps {
   onClose: () => void;
@@ -31,7 +40,7 @@ const AddTransaction = ({ onClose }: AddTransactionProps) => {
     { value: "investment", label: "Investimento", icon: TrendingUp, color: "text-blue-600" },
   ];
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
     if (!type || !amount || !category || !description) {
@@ -43,6 +52,48 @@ const AddTransaction = ({ onClose }: AddTransactionProps) => {
       return;
     }
 
+    
+  // normaliza "1.234,56" -> 1234.56
+  const normalizedAmount = Number(
+    String(amount).trim().replace(/\./g, "").replace(",", ".")
+  );
+
+  if (!Number.isFinite(normalizedAmount) || normalizedAmount <= 0) {
+    toast({
+      title: "Valor inválido",
+      description: "Informe um valor numérico maior que zero.",
+      variant: "destructive",
+    });
+    return;
+  }
+
+  // payload compatível com POST /transacoes do FastAPI
+  const payload = {
+    usuario_id: Number(DEFAULT_USER_ID),            // obrigatório no backend
+    data: (date ?? new Date()).toISOString(),       // datetime ISO
+    valor: normalizedAmount,                        // number
+    tipo: mapTypeToBackend(type),                   // income/expense/investment -> receita/despesa/investimento
+    descricao: description || undefined,            // opcional
+    categoria: category || undefined,               // string (slug/nome); back resolve para id/cache
+    status: "pendente",                             // default
+    // conta_id: 1,                                  // (opcional) associe a uma conta
+    // meta_id: 3,                                   // (opcional) vincule a uma meta
+    // alocacao_percentual: 15,                      // (opcional) % para meta
+  };
+
+  try {
+    const res = await fetch(`${API_URL}/transacoes`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+
+    if (!res.ok) {
+      let msg = "";
+      try { msg = await res.text(); } catch {}
+      throw new Error(`HTTP ${res.status}${msg ? ` - ${msg}` : ""}`);
+    }
+
     // Simular salvamento
     toast({
       title: "Sucesso!",
@@ -50,7 +101,14 @@ const AddTransaction = ({ onClose }: AddTransactionProps) => {
     });
 
     onClose();
-  };
+  } catch (err: any) {
+    toast({
+      title: "Falha ao salvar",
+      description: err?.message ?? "Tente novamente.",
+      variant: "destructive",
+    });
+  }
+};
 
   const handleCategoryReset = () => {
     setCategory("");
