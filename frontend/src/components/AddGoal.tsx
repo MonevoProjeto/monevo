@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -18,28 +18,31 @@ import {
   Lightbulb
 } from "lucide-react";
 
+import type { Goal } from "@/contexts/AppContext";
+
 interface AddGoalProps {
   onClose: () => void;
+  editGoal?: Goal | null;
 }
 
-const AddGoal = ({ onClose }: AddGoalProps) => {
+const AddGoal = ({ onClose, editGoal }: AddGoalProps) => {
   const [selectedCategory, setSelectedCategory] = useState<string>("");
   const [goalTitle, setGoalTitle] = useState<string>("");
   const [goalAmount, setGoalAmount] = useState<string>("");
   const [goalDeadline, setGoalDeadline] = useState<string>("");
   const [currentAmount, setCurrentAmount] = useState<string>("");
   
-  const { addGoal } = useApp();
+  const { addGoal, updateGoal } = useApp();
   const { toast } = useToast();
 
-  const categories = [
+  const categories = useMemo(() => [
     { id: "travel", label: "Viagem", icon: Plane, color: "text-blue-600", bgColor: "bg-blue-50", borderColor: "border-blue-200" },
     { id: "debt", label: "Quitar Dívida", icon: CreditCard, color: "text-red-600", bgColor: "bg-red-50", borderColor: "border-red-200" },
     { id: "emergency", label: "Reserva", icon: PiggyBank, color: "text-green-600", bgColor: "bg-green-50", borderColor: "border-green-200" },
     { id: "house", label: "Casa/Imóvel", icon: Home, color: "text-purple-600", bgColor: "bg-purple-50", borderColor: "border-purple-200" },
     { id: "car", label: "Veículo", icon: Car, color: "text-orange-600", bgColor: "bg-orange-50", borderColor: "border-orange-200" },
     { id: "education", label: "Educação", icon: GraduationCap, color: "text-indigo-600", bgColor: "bg-indigo-50", borderColor: "border-indigo-200" }
-  ];
+  ], [] as const);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -48,7 +51,7 @@ const AddGoal = ({ onClose }: AddGoalProps) => {
     if (!selectedCategoryData) return;
 
     try {
-      const newGoal = {
+      const goalData = {
         title: goalTitle,
         description: `Meta de ${selectedCategoryData.label.toLowerCase()}`,
         target: parseFloat(goalAmount),
@@ -61,12 +64,21 @@ const AddGoal = ({ onClose }: AddGoalProps) => {
         borderColor: selectedCategoryData.borderColor
       };
 
-      await addGoal(newGoal);
-      
-      toast({
-        title: "Meta criada com sucesso!",
-        description: `A meta "${goalTitle}" foi adicionada às suas metas.`,
-      });
+      if (editGoal) {
+        // Update existing goal
+        await updateGoal(editGoal.id, goalData);
+        toast({
+          title: "Meta atualizada com sucesso!",
+          description: `A meta "${goalTitle}" foi atualizada.`,
+        });
+      } else {
+        // Create new goal
+  await addGoal(goalData as Omit<Goal, 'id'>);
+        toast({
+          title: "Meta criada com sucesso!",
+          description: `A meta "${goalTitle}" foi adicionada às suas metas.`,
+        });
+      }
 
       onClose();
     } catch (error) {
@@ -79,6 +91,17 @@ const AddGoal = ({ onClose }: AddGoalProps) => {
   };
 
   const selectedCategoryData = categories.find(cat => cat.id === selectedCategory);
+
+  // If editGoal is provided, populate form fields
+  useEffect(() => {
+      if (editGoal) {
+      setSelectedCategory(categories.find(c => c.label === editGoal.category)?.id || "");
+      setGoalTitle(editGoal.title || "");
+      setGoalAmount(editGoal.target?.toString() || "");
+      setCurrentAmount(editGoal.current?.toString() || "");
+      setGoalDeadline(editGoal.deadline || "");
+    }
+    }, [editGoal, categories]);
 
   return (
     <div className="p-4 space-y-6 animate-fade-in">
@@ -93,8 +116,8 @@ const AddGoal = ({ onClose }: AddGoalProps) => {
           <ArrowLeft className="h-5 w-5" />
         </Button>
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">Nova Meta</h1>
-          <p className="text-gray-600">Defina seu próximo objetivo financeiro</p>
+          <h1 className="text-2xl font-bold text-gray-900">{editGoal ? 'Editar Meta' : 'Nova Meta'}</h1>
+          <p className="text-gray-600">{editGoal ? 'Altere os dados da sua meta' : 'Defina seu próximo objetivo financeiro'}</p>
         </div>
       </div>
 
@@ -202,7 +225,7 @@ const AddGoal = ({ onClose }: AddGoalProps) => {
               className="w-full bg-monevo-blue hover:bg-monevo-darkBlue"
               disabled={!selectedCategory || !goalTitle || !goalAmount || !goalDeadline}
             >
-              Criar Meta
+              {editGoal ? 'Salvar Alterações' : 'Criar Meta'}
             </Button>
           </form>
         </CardContent>

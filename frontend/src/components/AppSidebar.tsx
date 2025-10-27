@@ -1,4 +1,4 @@
-import { Home, Target, Brain, Bell, User, Plus, ChevronRight, LogOut } from "lucide-react";
+import { Home, Target, Brain, Bell, User, Plus, ChevronRight, LogOut, Receipt } from "lucide-react";
 import {
   Sidebar,
   SidebarContent,
@@ -25,6 +25,7 @@ export function AppSidebar({ activeTab, onTabChange }: AppSidebarProps) {
 
   const mainItems = [
     { id: "dashboard", label: "Início", icon: Home },
+    { id: "transactions", label: "Extrato", icon: Receipt },
     { id: "goals", label: "Metas", icon: Target },
     { id: "ai", label: "Assistente IA", icon: Brain },
     { id: "notifications", label: "Notificações", icon: Bell, hasBadge: true },

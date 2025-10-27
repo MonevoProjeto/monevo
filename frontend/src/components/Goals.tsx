@@ -2,6 +2,13 @@
 import { useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+} from "@/components/ui/dialog";
 import { Progress } from "@/components/ui/progress";
 import { useApp } from "@/contexts/AppContext";
 import { 
@@ -17,12 +24,14 @@ import {
   TrendingUp,
   CheckCircle2
 } from "lucide-react";
+import type { Goal } from "@/contexts/AppContext";
 
 interface GoalsProps {
   onNavigate?: (tab: string) => void;
+  onSetEditGoal?: (goal: Goal | null) => void;
 }
 
-const Goals = ({ onNavigate }: GoalsProps) => {
+const Goals = ({ onNavigate, onSetEditGoal }: GoalsProps) => {
   const [activeGoal, setActiveGoal] = useState<string | null>(null);
   const { goals, loading, error, refreshGoals, deleteGoal } = useApp();
 
@@ -60,6 +69,9 @@ const Goals = ({ onNavigate }: GoalsProps) => {
     goals.reduce((acc, goal) => acc + calculateProgress(goal.current, goal.target), 0) / goals.length : 0;
 
   const goalsOnTrack = goals.filter(goal => calculateProgress(goal.current, goal.target) >= 20).length;
+
+  // Dialog state for viewing goal details
+  const [selectedGoal, setSelectedGoal] = useState<typeof goals[number] | null>(null);
 
   // Loading state
   if (loading) {
@@ -187,6 +199,7 @@ const Goals = ({ onNavigate }: GoalsProps) => {
                     <p className="text-sm text-gray-500">
                       de {formatCurrency(goal.target)}
                     </p>
+                    
                   </div>
                 </div>
 
@@ -230,10 +243,23 @@ const Goals = ({ onNavigate }: GoalsProps) => {
                       </p>
                     </div>
                     <div className="flex gap-2">
-                      <Button size="sm" className="flex-1 bg-monevo-blue hover:bg-monevo-darkBlue">
-                        Ver Plano de Ação
+                      <Button
+                        size="sm"
+                        className="flex-1 bg-monevo-blue hover:bg-monevo-darkBlue"
+                        onClick={() => setSelectedGoal(goal)}
+                      >
+                        Detalhes da Meta
                       </Button>
-                      <Button size="sm" variant="outline" className="flex-1">
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="flex-1"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onSetEditGoal?.(goal);
+                          onNavigate?.("add-goal");
+                        }}
+                      >
                         Ajustar Meta
                       </Button>
                       <Button
@@ -251,6 +277,28 @@ const Goals = ({ onNavigate }: GoalsProps) => {
           );
         })}
       </div>
+
+      {/* Dialog para visualizar detalhes da meta */}
+      <Dialog open={!!selectedGoal} onOpenChange={(open) => { if (!open) setSelectedGoal(null); }}>
+        {selectedGoal && (
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>{selectedGoal.title}</DialogTitle>
+            </DialogHeader>
+            <DialogDescription>
+              <div className="mt-2">
+                <p className="text-sm text-gray-700">{selectedGoal.description}</p>
+                <div className="mt-4 text-sm text-gray-600">
+                  <p><strong>Categoria:</strong> {selectedGoal.category}</p>
+                  <p><strong>Progresso:</strong> {calculateProgress(selectedGoal.current, selectedGoal.target).toFixed(1)}%</p>
+                  <p><strong>Saldo atual:</strong> {formatCurrency(selectedGoal.current)}</p>
+                  <p><strong>Meta:</strong> {formatCurrency(selectedGoal.target)}</p>
+                </div>
+              </div>
+            </DialogDescription>
+          </DialogContent>
+        )}
+      </Dialog>
     </div>
   );
 };

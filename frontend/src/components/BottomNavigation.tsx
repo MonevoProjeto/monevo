@@ -1,5 +1,5 @@
 
-import { Home, Target, Brain, Plus, Bell, User } from "lucide-react";
+import { Home, Target, Brain, Plus, Bell, User, Receipt } from "lucide-react";
 
 interface BottomNavigationProps {
   activeTab: string;
@@ -9,6 +9,7 @@ interface BottomNavigationProps {
 const BottomNavigation = ({ activeTab, onTabChange }: BottomNavigationProps) => {
   const tabs = [
     { id: "dashboard", label: "Início", icon: Home },
+    { id: "transactions", label: "Extrato", icon: Receipt },
     { id: "goals", label: "Metas", icon: Target },
     { id: "ai", label: "IA", icon: Brain },
     { id: "notifications", label: "Alertas", icon: Bell },

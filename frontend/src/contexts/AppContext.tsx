@@ -16,7 +16,7 @@ interface ApiMeta {
   data_criacao: string;
 }
 
-interface Goal {
+export interface Goal {
   id: string;
   title: string;
   description: string;

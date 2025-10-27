@@ -18,14 +18,17 @@ import PayNow from "@/components/PayNow";
 import ViewProgress from "@/components/ViewProgress";
 import ViewReserve from "@/components/ViewReserve";
 import ViewProgressGoal from "@/components/ViewProgressGoal";
+import Transactions from "@/components/Transactions";
 import BottomNavigation from "@/components/BottomNavigation";
 import { AppProvider } from "@/contexts/AppContext";
+import type { Goal } from "@/contexts/AppContext";
 import { AppSidebar } from "@/components/AppSidebar";
 import { SidebarProvider, SidebarTrigger, SidebarInset } from "@/components/ui/sidebar";
 import { useIsMobile } from "@/hooks/use-mobile";
 
 const Index = () => {
   const [activeTab, setActiveTab] = useState<string>("dashboard");
+  const [editingGoal, setEditingGoal] = useState<Goal | null>(null);
   const isMobile = useIsMobile();
 
   const renderActiveComponent = () => {
@@ -33,7 +36,7 @@ const Index = () => {
       case "dashboard":
         return <Dashboard onNavigate={setActiveTab} />;
       case "goals":
-        return <Goals onNavigate={setActiveTab} />;
+        return <Goals onNavigate={setActiveTab} onSetEditGoal={setEditingGoal} />;
       case "ai":
         return <AIAssistant onNavigate={setActiveTab} />;
       case "investments":
@@ -47,7 +50,12 @@ const Index = () => {
       case "profile":
         return <Profile />;
       case "add-goal":
-        return <AddGoal onClose={() => setActiveTab("goals")} />;
+        return (
+          <AddGoal
+            onClose={() => { setActiveTab("goals"); setEditingGoal(null); }}
+            editGoal={editingGoal}
+          />
+        );
       case "chat-ai":
         return <ChatWithAI onClose={() => setActiveTab("ai")} />;
       case "view-analysis":
@@ -66,6 +74,8 @@ const Index = () => {
         return <ViewReserve onClose={() => setActiveTab("notifications")} />;
       case "view-progress-goal":
         return <ViewProgressGoal onClose={() => setActiveTab("ai")} />;
+      case "transactions":
+        return <Transactions />;
       default:
         return <Dashboard onNavigate={setActiveTab} />;
     }
@@ -104,6 +114,7 @@ const Index = () => {
                     {activeTab === "notifications" && "Notificações"}
                     {activeTab === "profile" && "Perfil"}
                     {activeTab === "add" && "Nova Transação"}
+                    {activeTab === "transactions" && "Extrato"}
                   </h1>
                 </div>
               </header>
