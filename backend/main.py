@@ -7,6 +7,10 @@ import os
 from datetime import datetime, date
 from passlib.hash import bcrypt
 
+from contextlib import asynccontextmanager
+import os, logging
+
+
 from models import Meta, MetaCreate, MetaUpdate, CategoriaRead, CategoriaCreate, CategoriaUpdate, ContaCreate, ContaRead, ContaUpdate,RecorrenciaCreate, RecorrenciaRead, RecorrenciaUpdate, TransacaoCreate, TransacaoRead, TransacaoUpdate, FaturaRead
 
 from database import get_db, create_tables, populate_initial_data, Conta, Recorrencia, Categoria, Transacao, MetaTable, UsuarioTable
@@ -14,7 +18,27 @@ from database import get_db, create_tables, populate_initial_data, Conta, Recorr
 from models import Meta, MetaCreate, Usuario, UsuarioCreate
 
 
-app = FastAPI(title="Monevo API", version="1.0.0")
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger("app")
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    try:
+        logger.info("Lifespan: startup")
+        create_tables()
+        populate_initial_data()
+        if os.getenv("WEBSITE_INSTANCE_ID"):
+            logger.info("Azure App Service detectado")
+        else:
+            logger.info("Ambiente local detectado")
+        yield
+    except Exception:
+        logger.exception("Erro durante lifespan startup")
+        # raise  # se quiser falhar hard
+    finally:
+        logger.info("Lifespan: shutdown")
+
+app = FastAPI(title="Monevo API", version="1.0.0",lifespan=lifespan)
 
 # ajuste as origens conforme seu ambiente
 ALLOWED_ORIGINS = [
@@ -25,19 +49,19 @@ ALLOWED_ORIGINS = [
 ]
 
 
-@app.on_event("startup")
+""" @app.on_event("startup")
 def on_startup():
-    """Inicializa as tabelas e (localmente) popula dados de exemplo."""
-    create_tables()
-    populate_initial_data()
-    if os.getenv("WEBSITE_INSTANCE_ID"):
-        print("Executando no Azure App Service")
-    else:
-        print("Executando localmente")
+    #Inicializa as tabelas e (localmente) popula dados de exemplo."""
+    #create_tables()
+    #populate_initial_data()
+    #if os.getenv("WEBSITE_INSTANCE_ID"):
+        #print("Executando no Azure App Service")
+    #else:
+        #print("Executando localmente")
 
 # Base de dados temporária (em memória)
 # metas_db = []
-# next_id = 1
+# next_id = 1 """
 
 
 @app.get("/")
