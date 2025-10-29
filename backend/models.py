@@ -285,3 +285,40 @@ class Usuario(UsuarioBase):
 
     class Config:
         orm_mode = True
+
+
+class UsuarioCreate(BaseModel):
+    """Dados para criar nova conta"""
+    nome: str = Field(..., min_length=3, max_length=100)
+    email: str = Field(..., description="Email único")
+    senha: str = Field(..., min_length=6, description="Senha (mínimo 6 caracteres)")
+    curso: str = Field(..., min_length=2, max_length=100)
+
+
+class UsuarioLogin(BaseModel):
+    """Dados para fazer login"""
+    email: str
+    senha: str
+
+
+class Usuario(BaseModel):
+    """Dados do usuário (sem senha!)"""
+    id: int
+    nome: str
+    email: str
+    curso: str
+    data_criacao: Optional[datetime] = None
+    
+    class Config:
+        orm_mode = True
+
+
+class UsuarioComProdutos(Usuario):
+    """Usuário com contagem de produtos"""
+    total_produtos: int = 0
+
+
+class LoginResponse(BaseModel):
+    """Resposta do login"""
+    token: str
+    usuario: Usuario

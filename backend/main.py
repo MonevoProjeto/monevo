@@ -1,21 +1,39 @@
-from fastapi import FastAPI, HTTPException, Depends
+from fastapi import FastAPI, HTTPException, Depends, UploadFile, File
 from fastapi.middleware.cors import CORSMiddleware
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 from sqlalchemy import or_, func
 from typing import List, Optional
 import os
 from datetime import datetime, date
 from passlib.hash import bcrypt
 
+<<<<<<< Updated upstream
 from contextlib import asynccontextmanager
 import os, logging
 
 
 from models import Meta, MetaCreate, MetaUpdate, CategoriaRead, CategoriaCreate, CategoriaUpdate, ContaCreate, ContaRead, ContaUpdate,RecorrenciaCreate, RecorrenciaRead, RecorrenciaUpdate, TransacaoCreate, TransacaoRead, TransacaoUpdate, FaturaRead
+=======
+from models import (
+    Meta, MetaCreate, MetaUpdate,
+    CategoriaRead, CategoriaCreate, CategoriaUpdate,
+    ContaCreate, ContaRead, ContaUpdate,
+    RecorrenciaCreate, RecorrenciaRead, RecorrenciaUpdate,
+    TransacaoCreate, TransacaoRead, TransacaoUpdate,
+    FaturaRead,
+    Usuario, UsuarioCreate,
+    Produto, ProdutoCreate, Foto
+)
+>>>>>>> Stashed changes
 
-from database import get_db, create_tables, populate_initial_data, Conta, Recorrencia, Categoria, Transacao, MetaTable, UsuarioTable
+from database import (
+    get_db, create_tables, populate_initial_data,
+    Conta, Recorrencia, Categoria, Transacao, MetaTable, UsuarioTable,
+    ProdutoTable, FotoTable
+)
 
-from models import Meta, MetaCreate, Usuario, UsuarioCreate
+from auth import pegar_usuario_atual
+from auth_routes import router as auth_router
 
 
 logging.basicConfig(level=logging.INFO)
@@ -42,15 +60,16 @@ app = FastAPI(title="Monevo API", version="1.0.0",lifespan=lifespan)
 
 # ajuste as origens conforme seu ambiente
 ALLOWED_ORIGINS = [
-        "http://localhost:5173",   # se estiver usando Vite padrão
-        "http://127.0.0.1:5173",   # se acessar pelo 127
-        "http://localhost:8080",   # o seu caso atual
-        "http://127.0.0.1:8080",   # segurança extra
+        "http://localhost:5173",
+        "http://127.0.0.1:5173",
+        "http://localhost:8080",
+        "http://127.0.0.1:8080",
 ]
 
 
 """ @app.on_event("startup")
 def on_startup():
+<<<<<<< Updated upstream
     #Inicializa as tabelas e (localmente) popula dados de exemplo."""
     #create_tables()
     #populate_initial_data()
@@ -63,6 +82,16 @@ def on_startup():
 # metas_db = []
 # next_id = 1 """
 
+=======
+    """Inicializa as tabelas e popula dados de exemplo."""
+    create_tables()
+    populate_initial_data()
+    if os.getenv("WEBSITE_INSTANCE_ID"):
+        print("Executando no Azure App Service")
+    else:
+        print("Executando localmente")
+
+>>>>>>> Stashed changes
 
 @app.get("/")
 def root():
@@ -71,20 +100,18 @@ def root():
     return {"message": "Monevo API - Gestão de Metas Financeiras", "ambiente": ambiente, "banco": banco}
 
 
-
+# -----------------------------------
+# METAS
+# -----------------------------------
 @app.get("/metas", response_model=List[Meta])
 def listar_metas(db: Session = Depends(get_db)):
     metas = db.query(MetaTable).order_by(MetaTable.data_criacao.desc()).all()
-    # Como Meta possui orm_mode=True, podemos retornar objetos ORM diretamente
     return metas
-
 
 @app.post("/metas", response_model=Meta, status_code=201)
 def criar_meta(meta: MetaCreate, db: Session = Depends(get_db)):
-    # Regra opcional: valor_atual não pode exceder o objetivo
     if meta.valor_atual > meta.valor_objetivo:
         raise HTTPException(status_code=422, detail="valor_atual não pode ser maior que valor_objetivo")
-
     nova = MetaTable(
         titulo=meta.titulo,
         descricao=meta.descricao,
@@ -98,7 +125,6 @@ def criar_meta(meta: MetaCreate, db: Session = Depends(get_db)):
     db.refresh(nova)
     return nova
 
-
 @app.get("/metas/{meta_id}", response_model=Meta)
 def buscar_meta(meta_id: int, db: Session = Depends(get_db)):
     m = db.query(MetaTable).filter(MetaTable.id == meta_id).first()
@@ -106,33 +132,22 @@ def buscar_meta(meta_id: int, db: Session = Depends(get_db)):
         raise HTTPException(status_code=404, detail="Meta não encontrada")
     return m
 
-
 @app.patch("/metas/{meta_id}", response_model=Meta)
 def atualizar_meta(meta_id: int, payload: MetaUpdate, db: Session = Depends(get_db)):
     m = db.query(MetaTable).filter(MetaTable.id == meta_id).first()
     if not m:
         raise HTTPException(status_code=404, detail="Meta não encontrada")
-
     data = payload.dict(exclude_unset=True)
-
-    # Regra: valor_atual não pode exceder valor_objetivo (considera valores novos ou atuais)
     novo_valor_atual = data.get("valor_atual", m.valor_atual)
     novo_valor_objetivo = data.get("valor_objetivo", m.valor_objetivo)
-    if (
-        novo_valor_atual is not None
-        and novo_valor_objetivo is not None
-        and novo_valor_atual > novo_valor_objetivo
-    ):
+    if novo_valor_atual > novo_valor_objetivo:
         raise HTTPException(status_code=422, detail="valor_atual não pode ser maior que valor_objetivo")
-
     for k, v in data.items():
         setattr(m, k, v)
-
     db.add(m)
     db.commit()
     db.refresh(m)
     return m
-
 
 @app.delete("/metas/{meta_id}", status_code=204)
 def deletar_meta(meta_id: int, db: Session = Depends(get_db)):
@@ -143,23 +158,16 @@ def deletar_meta(meta_id: int, db: Session = Depends(get_db)):
     db.commit()
     return {}
 
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=ALLOWED_ORIGINS,
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
 
-
-
+# -----------------------------------
+# CATEGORIAS
+# -----------------------------------
 @app.get("/categorias/{categoria_id}", response_model=CategoriaRead)
 def buscar_categoria(categoria_id: int, db: Session = Depends(get_db)):
     c = db.query(Categoria).filter(Categoria.id == categoria_id).first()
     if not c:
         raise HTTPException(status_code=404, detail="Categoria não encontrada")
     return c
-
 
 @app.post("/categorias", response_model=CategoriaRead, status_code=201)
 def criar_categoria(payload: CategoriaCreate, db: Session = Depends(get_db)):
@@ -178,7 +186,6 @@ def criar_categoria(payload: CategoriaCreate, db: Session = Depends(get_db)):
     db.refresh(c)
     return c
 
-
 @app.patch("/categorias/{categoria_id}", response_model=CategoriaRead)
 def atualizar_categoria(categoria_id: int, payload: CategoriaUpdate, db: Session = Depends(get_db)):
     c = db.query(Categoria).filter(Categoria.id == categoria_id).first()
@@ -192,7 +199,6 @@ def atualizar_categoria(categoria_id: int, payload: CategoriaUpdate, db: Session
     db.refresh(c)
     return c
 
-
 @app.delete("/categorias/{categoria_id}", status_code=204)
 def deletar_categoria(categoria_id: int, db: Session = Depends(get_db)):
     c = db.query(Categoria).filter(Categoria.id == categoria_id).first()
@@ -203,16 +209,15 @@ def deletar_categoria(categoria_id: int, db: Session = Depends(get_db)):
     return {}
 
 
-# -------------------------
-# Contas (CRUD)
-# -------------------------
+# -----------------------------------
+# CONTAS
+# -----------------------------------
 @app.get("/contas", response_model=List[ContaRead])
 def listar_contas(usuario_id: Optional[int] = None, db: Session = Depends(get_db)):
     q = db.query(Conta)
     if usuario_id:
         q = q.filter(Conta.usuario_id == usuario_id)
     return q.order_by(Conta.id.desc()).all()
-
 
 @app.post("/contas", response_model=ContaRead, status_code=201)
 def criar_conta(payload: ContaCreate, db: Session = Depends(get_db)):
@@ -228,14 +233,12 @@ def criar_conta(payload: ContaCreate, db: Session = Depends(get_db)):
     db.refresh(c)
     return c
 
-
 @app.get("/contas/{conta_id}", response_model=ContaRead)
 def buscar_conta(conta_id: int, db: Session = Depends(get_db)):
     c = db.query(Conta).filter(Conta.id == conta_id).first()
     if not c:
         raise HTTPException(status_code=404, detail="Conta não encontrada")
     return c
-
 
 @app.patch("/contas/{conta_id}", response_model=ContaRead)
 def atualizar_conta(conta_id: int, payload: ContaUpdate, db: Session = Depends(get_db)):
@@ -250,7 +253,6 @@ def atualizar_conta(conta_id: int, payload: ContaUpdate, db: Session = Depends(g
     db.refresh(c)
     return c
 
-
 @app.delete("/contas/{conta_id}", status_code=204)
 def deletar_conta(conta_id: int, db: Session = Depends(get_db)):
     c = db.query(Conta).filter(Conta.id == conta_id).first()
@@ -261,16 +263,15 @@ def deletar_conta(conta_id: int, db: Session = Depends(get_db)):
     return {}
 
 
-# -------------------------
-# Recorrências (CRUD)
-# -------------------------
+# -----------------------------------
+# RECURRÊNCIAS
+# -----------------------------------
 @app.get("/recorrencias", response_model=List[RecorrenciaRead])
 def listar_recorrencias(usuario_id: Optional[int] = None, db: Session = Depends(get_db)):
     q = db.query(Recorrencia)
     if usuario_id:
         q = q.filter(Recorrencia.usuario_id == usuario_id)
     return q.order_by(Recorrencia.id.desc()).all()
-
 
 @app.post("/recorrencias", response_model=RecorrenciaRead, status_code=201)
 def criar_recorrencia(payload: RecorrenciaCreate, db: Session = Depends(get_db)):
@@ -290,14 +291,12 @@ def criar_recorrencia(payload: RecorrenciaCreate, db: Session = Depends(get_db))
     db.refresh(r)
     return r
 
-
 @app.get("/recorrencias/{rec_id}", response_model=RecorrenciaRead)
 def buscar_recorrencia(rec_id: int, db: Session = Depends(get_db)):
     r = db.query(Recorrencia).filter(Recorrencia.id == rec_id).first()
     if not r:
         raise HTTPException(status_code=404, detail="Recorrência não encontrada")
     return r
-
 
 @app.patch("/recorrencias/{rec_id}", response_model=RecorrenciaRead)
 def atualizar_recorrencia(rec_id: int, payload: RecorrenciaUpdate, db: Session = Depends(get_db)):
@@ -312,7 +311,6 @@ def atualizar_recorrencia(rec_id: int, payload: RecorrenciaUpdate, db: Session =
     db.refresh(r)
     return r
 
-
 @app.delete("/recorrencias/{rec_id}", status_code=204)
 def deletar_recorrencia(rec_id: int, db: Session = Depends(get_db)):
     r = db.query(Recorrencia).filter(Recorrencia.id == rec_id).first()
@@ -323,9 +321,9 @@ def deletar_recorrencia(rec_id: int, db: Session = Depends(get_db)):
     return {}
 
 
-# -------------------------
-# Transações (CRUD + filtros + lógica de meta)
-# -------------------------
+# -----------------------------------
+# TRANSAÇÕES
+# -----------------------------------
 @app.get("/transacoes", response_model=List[TransacaoRead])
 def listar_transacoes(
     usuario_id: Optional[int] = None,
@@ -408,15 +406,7 @@ def criar_transacao(payload: TransacaoCreate, db: Session = Depends(get_db)):
     if novo.conta_id:
         conta = db.query(Conta).filter(Conta.id == novo.conta_id).first()
         if conta:
-            novo.conta_nome_cache = conta.nome
-
-    # atualizar meta incremental
-    if novo.meta_id and novo.alocado_valor:
-        meta = db.query(MetaTable).filter(MetaTable.id == novo.meta_id).first()
-        if meta:
-            novo.meta_nome_cache = meta.titulo
-            meta.valor_atual = (meta.valor_atual or 0.0) + novo.alocado_valor
-            db.add(meta)
+            novo.conta_cache = conta.nome
 
     db.add(novo)
     db.commit()
@@ -424,126 +414,170 @@ def criar_transacao(payload: TransacaoCreate, db: Session = Depends(get_db)):
     return novo
 
 
-@app.get("/transacoes/{transacao_id}", response_model=TransacaoRead)
-def buscar_transacao(transacao_id: int, db: Session = Depends(get_db)):
-    t = db.query(Transacao).filter(Transacao.id == transacao_id).first()
-    if not t:
-        raise HTTPException(status_code=404, detail="Transação não encontrada")
-    return t
-
-
-@app.patch("/transacoes/{transacao_id}", response_model=TransacaoRead)
-def atualizar_transacao(transacao_id: int, payload: TransacaoUpdate, db: Session = Depends(get_db)):
-    t = db.query(Transacao).filter(Transacao.id == transacao_id).first()
-    if not t:
-        raise HTTPException(status_code=404, detail="Transação não encontrada")
-
-    old_alocado = t.alocado_valor or 0.0
-    old_meta_id = t.meta_id
-
-    data = payload.dict(exclude_unset=True)
-    for k, v in data.items():
-        setattr(t, k, v)
-
-    # recalcular alocado_valor
-    try:
-        t.alocado_valor = float(t.valor) * float(t.alocacao_percentual or 0.0) / 100.0
-    except Exception:
-        t.alocado_valor = 0.0
-
-    new_alocado = t.alocado_valor or 0.0
-    new_meta_id = t.meta_id
-
-    # ajustar metas
-    if old_meta_id and old_meta_id != new_meta_id and old_alocado:
-        old_meta = db.query(MetaTable).filter(MetaTable.id == old_meta_id).first()
-        if old_meta:
-            old_meta.valor_atual = max(0.0, (old_meta.valor_atual or 0.0) - old_alocado)
-            db.add(old_meta)
-
-    if new_meta_id:
-        meta = db.query(MetaTable).filter(MetaTable.id == new_meta_id).first()
-        if meta:
-            if old_meta_id == new_meta_id and old_alocado:
-                meta.valor_atual = max(0.0, (meta.valor_atual or 0.0) - old_alocado)
-            meta.valor_atual = (meta.valor_atual or 0.0) + new_alocado
-            db.add(meta)
-
-    db.add(t)
-    db.commit()
-    db.refresh(t)
-    return t
-
-
-@app.delete("/transacoes/{transacao_id}", status_code=204)
-def deletar_transacao(transacao_id: int, db: Session = Depends(get_db)):
-    t = db.query(Transacao).filter(Transacao.id == transacao_id).first()
-    if not t:
-        raise HTTPException(status_code=404, detail="Transação não encontrada")
-    if t.meta_id and (t.alocado_valor or 0.0):
-        meta = db.query(MetaTable).filter(MetaTable.id == t.meta_id).first()
-        if meta:
-            meta.valor_atual = max(0.0, (meta.valor_atual or 0.0) - (t.alocado_valor or 0.0))
-            db.add(meta)
-    db.delete(t)
-    db.commit()
-    return {}
-
-
-# -------------------------
-# Fatura (gerar relatório, somente leitura)
-# -------------------------
-@app.get("/faturas/generar", response_model=FaturaRead)
-def gerar_fatura(conta_cartao_id: int, inicio: date, fim: date, db: Session = Depends(get_db)):
-    inicio_dt = datetime.combine(inicio, datetime.min.time())
-    fim_dt = datetime.combine(fim, datetime.max.time())
-
-    transacoes = db.query(Transacao).filter(
-        Transacao.cartao_id == conta_cartao_id,
-        Transacao.data >= inicio_dt,
-        Transacao.data <= fim_dt
-    ).order_by(Transacao.data.asc()).all()
-
-    total = sum([t.valor for t in transacoes]) if transacoes else 0.0
-    result = {
-        "conta_cartao_id": conta_cartao_id,
-        "periodo_inicio": inicio,
-        "periodo_fim": fim,
-        "total": float(total),
-        "count": len(transacoes)
-    }
-    return result
-
-
-@app.post("/usuarios/", response_model=Usuario, status_code=201)
-def criar_usuario(usuario: UsuarioCreate, db: Session = Depends(get_db)):
-    """Cria um novo usuário com senha criptografada"""
-    existente = db.query(UsuarioTable).filter(UsuarioTable.email == usuario.email).first()
-    if existente:
-        raise HTTPException(status_code=400, detail="E-mail já cadastrado")
-
-    senha_hash = bcrypt.hash(usuario.senha)
-
-    novo_usuario = UsuarioTable(
-        nome=usuario.nome,
-        email=usuario.email,
-        senha=senha_hash,
+# -----------------------------------
+# USUÁRIOS
+# -----------------------------------
+@app.post("/usuarios", response_model=Usuario, status_code=201)
+def criar_usuario(payload: UsuarioCreate, db: Session = Depends(get_db)):
+    exists = db.query(UsuarioTable).filter(UsuarioTable.email == payload.email).first()
+    if exists:
+        raise HTTPException(status_code=422, detail="Usuário com este email já existe")
+    u = UsuarioTable(
+        nome=payload.nome,
+        email=payload.email,
+        senha_hash=bcrypt.hash(payload.senha)
     )
-    db.add(novo_usuario)
+    db.add(u)
     db.commit()
-    db.refresh(novo_usuario)
-    return novo_usuario
+    db.refresh(u)
+    return u
+
+@app.get("/usuarios/{usuario_id}", response_model=Usuario)
+def buscar_usuario(usuario_id: int, db: Session = Depends(get_db)):
+    u = db.query(UsuarioTable).filter(UsuarioTable.id == usuario_id).first()
+    if not u:
+        raise HTTPException(status_code=404, detail="Usuário não encontrado")
+    return u
 
 
-@app.get("/usuarios/", response_model=List[Usuario])
-def listar_usuarios(db: Session = Depends(get_db)):
-    """Lista todos os usuários cadastrados"""
-    usuarios = db.query(UsuarioTable).all()
-    return usuarios
+# -----------------------------------
+# PRODUTOS (CRUD + UPLOAD)
+# -----------------------------------
+
+CATEGORIAS_VALIDAS = ["eletrônicos", "roupas", "cosméticos", "livros"]  # exemplo de categorias válidas
+
+@app.get("/produtos", response_model=List[Produto])
+def listar_produtos(db: Session = Depends(get_db)):
+    produtos = db.query(ProdutoTable).order_by(ProdutoTable.data_criacao.desc()).all()
+    return produtos
 
 
+@app.post("/produtos", response_model=Produto, status_code=201)
+def criar_produto(
+    produto: ProdutoCreate, 
+    user_id: int = Depends(pegar_usuario_atual),  # AUTENTICAÇÃO
+    db: Session = Depends(get_db)
+):
+    if produto.categoria not in CATEGORIAS_VALIDAS:
+        raise HTTPException(
+            status_code=422, 
+            detail=f"Categoria inválida. Use uma destas: {', '.join(CATEGORIAS_VALIDAS)}"
+        )
+    
+    db_produto = ProdutoTable(
+        titulo=produto.titulo,
+        descricao=produto.descricao,
+        preco=produto.preco,
+        categoria=produto.categoria,
+        vendedor=produto.vendedor,
+        usuario_id=user_id
+    )
+    
+    db.add(db_produto)
+    db.commit()
+    db.refresh(db_produto)
+    return db_produto
 
-if __name__ == "__main__":
-    import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+
+@app.put("/produtos/{produto_id}", response_model=Produto)
+def atualizar_produto(
+    produto_id: int, 
+    produto_atualizado: ProdutoCreate, 
+    user_id: int = Depends(pegar_usuario_atual),  # AUTENTICAÇÃO
+    db: Session = Depends(get_db)
+):
+    produto = db.query(ProdutoTable).filter(ProdutoTable.id == produto_id).first()
+    if not produto:
+        raise HTTPException(status_code=404, detail="Produto não encontrado")
+    
+    if produto.usuario_id != user_id:
+        raise HTTPException(
+            status_code=403, 
+            detail="Você não pode editar este produto! Apenas o dono pode."
+        )
+    
+    if produto_atualizado.categoria not in CATEGORIAS_VALIDAS:
+        raise HTTPException(
+            status_code=422, 
+            detail=f"Categoria inválida. Use uma destas: {', '.join(CATEGORIAS_VALIDAS)}"
+        )
+    
+    produto.titulo = produto_atualizado.titulo
+    produto.descricao = produto_atualizado.descricao
+    produto.preco = produto_atualizado.preco
+    produto.categoria = produto_atualizado.categoria
+    produto.vendedor = produto_atualizado.vendedor
+    
+    db.commit()
+    db.refresh(produto)
+    return produto
+
+
+@app.delete("/produtos/{produto_id}")
+def deletar_produto(
+    produto_id: int, 
+    user_id: int = Depends(pegar_usuario_atual),  # AUTENTICAÇÃO
+    db: Session = Depends(get_db)
+):
+    produto = db.query(ProdutoTable).filter(ProdutoTable.id == produto_id).first()
+    if not produto:
+        raise HTTPException(status_code=404, detail="Produto não encontrado")
+    
+    if produto.usuario_id != user_id:
+        raise HTTPException(
+            status_code=403, 
+            detail="Você não pode deletar este produto! Apenas o dono pode."
+        )
+    
+    db.delete(produto)
+    db.commit()
+    return {"message": "Produto removido com sucesso"}
+
+
+@app.post("/produtos/{produto_id}/fotos", response_model=Foto)
+async def upload_foto(
+    produto_id: int, 
+    file: UploadFile = File(...),
+    user_id: int = Depends(pegar_usuario_atual),  # AUTENTICAÇÃO
+    db: Session = Depends(get_db)
+):
+    produto = db.query(ProdutoTable).filter(ProdutoTable.id == produto_id).first()
+    if not produto:
+        raise HTTPException(status_code=404, detail="Produto não encontrado")
+    
+    if produto.usuario_id != user_id:
+        raise HTTPException(
+            status_code=403, 
+            detail="Você só pode adicionar fotos aos seus próprios produtos!"
+        )
+    
+    if not file.content_type.startswith("image/"):
+        raise HTTPException(status_code=422, detail="Arquivo deve ser uma imagem")
+    
+    caminho = f"uploads/{produto_id}_{file.filename}"
+    os.makedirs(os.path.dirname(caminho), exist_ok=True)
+    with open(caminho, "wb") as f:
+        f.write(await file.read())
+    
+    foto = FotoTable(
+        produto_id=produto_id,
+        caminho=caminho,
+        criado_em=datetime.utcnow()
+    )
+    db.add(foto)
+    db.commit()
+    db.refresh(foto)
+    return foto
+
+
+# -----------------------------------
+# CONFIGURAÇÕES CORS
+# -----------------------------------
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=ALLOWED_ORIGINS,
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 

@@ -52,6 +52,18 @@ from sqlalchemy.orm import sessionmaker, declarative_base
 
 load_dotenv()
 
+# ... código existente ...
+
+class UsuarioTable(Base):
+    __tablename__ = "usuarios"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    nome = Column(String(100), nullable=False)
+    email = Column(String(100), unique=True, nullable=False, index=True)
+    senha_hash = Column(String(255), nullable=False)
+    curso = Column(String(100))
+    data_criacao = Column(DateTime, default=datetime.utcnow)
+
 
 def _build_mssql_odbc_url_from_env() -> str:
     """Monta a URL mssql+pyodbc segura via odbc_connect usando variáveis DB_*."""
@@ -166,6 +178,7 @@ class MetaTable(Base):
     valor_atual = Column(Float, nullable=False, default=0)
     prazo = Column(Date, nullable=True)
     data_criacao = Column(DateTime, default=datetime.utcnow)
+    usuario_id = Column(Integer, ForeignKey("usuarios.id"), nullable=True)
 
 class Conta(Base):
     __tablename__ = "contas"
@@ -461,3 +474,10 @@ def populate_initial_data():
         print(f"Erro ao popular dados: {e}")
     finally:
         db.close()
+<<<<<<< Updated upstream
+=======
+
+
+
+
+>>>>>>> Stashed changes

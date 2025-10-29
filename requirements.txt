@@ -1,0 +1,14 @@
+fastapi
+uvicorn[standard]
+pydantic 
+sqlalchemy
+python-dotenv
+pyodbc
+passlib
+azure-storage-blob
+python-multipart
+
+pyjwt
+bcrypt
+python-jose[cryptography]
+passlib[bcrypt]
