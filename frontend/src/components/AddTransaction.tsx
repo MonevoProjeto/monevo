@@ -11,6 +11,7 @@ import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { cn } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
+import { useApp } from "@/contexts/AppContext";
 import CategorySelector from "./CategorySelector";
 const API_URL = import.meta.env.VITE_API_URL ?? "http://127.0.0.1:8000";
 const DEFAULT_USER_ID = Number(import.meta.env.VITE_DEFAULT_USER_ID ?? 1);
@@ -33,6 +34,7 @@ const AddTransaction = ({ onClose }: AddTransactionProps) => {
   const [description, setDescription] = useState<string>("");
   const [date, setDate] = useState<Date>(new Date());
   const { toast } = useToast();
+  const { addTransaction } = useApp();
 
   const transactionTypes = [
     { value: "income", label: "Receita", icon: ArrowUpCircle, color: "text-green-600" },
@@ -82,17 +84,14 @@ const AddTransaction = ({ onClose }: AddTransactionProps) => {
   };
 
   try {
-    const res = await fetch(`${API_URL}/transacoes`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload),
+    // Use shared app context to add transaction (optimistic update + server sync)
+    await addTransaction({
+      type: type as 'income' | 'expense' | 'investment',
+      category,
+      description,
+      amount: normalizedAmount,
+      date: payload.data,
     });
-
-    if (!res.ok) {
-      let msg = "";
-      try { msg = await res.text(); } catch {}
-      throw new Error(`HTTP ${res.status}${msg ? ` - ${msg}` : ""}`);
-    }
 
     // Simular salvamento
     toast({
@@ -101,10 +100,11 @@ const AddTransaction = ({ onClose }: AddTransactionProps) => {
     });
 
     onClose();
-  } catch (err: any) {
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : String(err);
     toast({
       title: "Falha ao salvar",
-      description: err?.message ?? "Tente novamente.",
+      description: message || "Tente novamente.",
       variant: "destructive",
     });
   }

@@ -1,5 +1,6 @@
 
 import { useState } from "react";
+import { useEffect } from "react";
 import Dashboard from "@/components/Dashboard";
 import Investments from "@/components/Investments";
 import AddTransaction from "@/components/AddTransaction";
@@ -29,12 +30,50 @@ import { useIsMobile } from "@/hooks/use-mobile";
 const Index = () => {
   const [activeTab, setActiveTab] = useState<string>("dashboard");
   const [editingGoal, setEditingGoal] = useState<Goal | null>(null);
+  const [transactionsFilter, setTransactionsFilter] = useState<"all" | "income" | "expense">("all");
   const isMobile = useIsMobile();
+
+
+  // Use URL hash to track tab changes so the browser back/forward navigates between tabs
+  // without leaving the /index route. This creates a natural history of visited tabs.
+  useEffect(() => {
+    // Initialize activeTab from hash if present
+    const currentHash = window.location.hash.replace('#', '');
+    if (currentHash) {
+      setActiveTab(currentHash);
+    } else {
+      // Ensure there's at least a dashboard hash without creating extra history entry
+      window.history.replaceState(null, '', '#dashboard');
+      setActiveTab('dashboard');
+    }
+
+    const onHash = () => {
+      const h = window.location.hash.replace('#', '') || 'dashboard';
+      setActiveTab(h);
+    };
+
+    window.addEventListener('hashchange', onHash);
+    return () => window.removeEventListener('hashchange', onHash);
+  }, []);
+
+  // Push a hash entry each time activeTab changes so browser back goes to previous tab
+  useEffect(() => {
+    try {
+      const h = window.location.hash.replace('#', '') || '';
+      if (activeTab && h !== activeTab) {
+        // push a new hash state (creates a history entry)
+        window.location.hash = activeTab;
+      }
+    } catch (e) {
+      // ignore
+    }
+  }, [activeTab]);
+
 
   const renderActiveComponent = () => {
     switch (activeTab) {
       case "dashboard":
-        return <Dashboard onNavigate={setActiveTab} />;
+         return <Dashboard onNavigate={setActiveTab} onSetTransactionsFilter={setTransactionsFilter} />;
       case "goals":
         return <Goals onNavigate={setActiveTab} onSetEditGoal={setEditingGoal} />;
       case "ai":
@@ -75,7 +114,7 @@ const Index = () => {
       case "view-progress-goal":
         return <ViewProgressGoal onClose={() => setActiveTab("ai")} />;
       case "transactions":
-        return <Transactions />;
+        return <Transactions initialFilter={transactionsFilter} />;
       default:
         return <Dashboard onNavigate={setActiveTab} />;
     }
@@ -85,9 +124,10 @@ const Index = () => {
     <AppProvider>
       {isMobile ? (
         // Mobile Layout
-        <div className="min-h-screen bg-gray-50 flex flex-col max-w-md mx-auto relative">
-          {/* Status Bar Simulation */}
-          <div className="bg-monevo-blue h-6 w-full"></div>
+        <div
+          className="min-h-screen bg-gray-50 flex flex-col max-w-md mx-auto relative"
+          style={{ paddingTop: 'calc(env(safe-area-inset-top, 0px) + 12px)' }}
+        >
           
           {/* Main Content */}
           <div className="flex-1 pb-20 overflow-y-auto">

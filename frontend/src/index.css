@@ -1,9 +1,8 @@
-
+/* stylelint-disable */
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
-
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
 
 @layer base {
   :root {
@@ -45,7 +44,15 @@
     --sidebar-accent-foreground: 240 5.9% 10%;
     --sidebar-border: 220 13% 91%;
     --sidebar-ring: 217.2 91.2% 59.8%;
-  }
+   /* Chart palette (H S% L%) used by recharts fills via hsl(var(--chart-x)) */
+  --chart-1: 214 56% 43%; /* blue */
+  --chart-2: 146 54% 35%; /* green */
+  --chart-3: 33 100% 50%; /* orange */
+  --chart-4: 264 53% 47%; /* purple */
+  --chart-5: 0 78% 48%;   /* red */
+  --chart-6: 210 8% 40%;  /* gray/other */
+   }
+  
 
   .dark {
     --background: 222.2 84% 4.9%;

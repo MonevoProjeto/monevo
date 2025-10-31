@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { ArrowUpRight, ArrowDownRight, Filter, Search, Calendar } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -6,92 +6,29 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Popover, PopoverTrigger, PopoverContent } from "@/components/ui/popover";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { useApp } from "@/contexts/AppContext";
 
 interface Transaction {
   id: string;
-  type: "income" | "expense";
+  type: "income" | "expense" | "investment";
   category: string;
   description: string;
   amount: number;
   date: string;
 }
 
-const Transactions = () => {
-  const [filter, setFilter] = useState<"all" | "income" | "expense">("all");
+const Transactions = ({ initialFilter }: { initialFilter?: "all" | "income" | "expense" }) => {
+  const [filter, setFilter] = useState<"all" | "income" | "expense">(initialFilter ?? "all");
+  useEffect(() => {
+    setFilter(initialFilter ?? "all");
+  }, [initialFilter]);
   const [searchTerm, setSearchTerm] = useState("");
   const [periodOpen, setPeriodOpen] = useState(false);
   const [startDate, setStartDate] = useState<string>("");
   const [endDate, setEndDate] = useState<string>("");
 
-  const transactions: Transaction[] = useMemo(
-    () => [
-      {
-        id: "1",
-        type: "income",
-        category: "Salário",
-        description: "Salário mensal",
-        amount: 5000,
-        date: "2024-03-15",
-      },
-      {
-        id: "2",
-        type: "expense",
-        category: "Alimentação",
-        description: "Supermercado",
-        amount: 450,
-        date: "2024-03-14",
-      },
-      {
-        id: "3",
-        type: "expense",
-        category: "Transporte",
-        description: "Gasolina",
-        amount: 200,
-        date: "2024-03-13",
-      },
-      {
-        id: "4",
-        type: "income",
-        category: "Freelance",
-        description: "Projeto web",
-        amount: 1500,
-        date: "2024-03-12",
-      },
-      {
-        id: "5",
-        type: "expense",
-        category: "Lazer",
-        description: "Cinema",
-        amount: 80,
-        date: "2024-03-11",
-      },
-      {
-        id: "6",
-        type: "expense",
-        category: "Saúde",
-        description: "Farmácia",
-        amount: 120,
-        date: "2024-03-10",
-      },
-      {
-        id: "7",
-        type: "income",
-        category: "Investimentos",
-        description: "Dividendos",
-        amount: 350,
-        date: "2024-03-09",
-      },
-      {
-        id: "8",
-        type: "expense",
-        category: "Moradia",
-        description: "Aluguel",
-        amount: 1200,
-        date: "2024-03-08",
-      },
-    ],
-    []
-  );
+  
+  const { transactions } = useApp();
 
   const filteredTransactions = transactions.filter((transaction) => {
     const matchesFilter = filter === "all" || transaction.type === filter;

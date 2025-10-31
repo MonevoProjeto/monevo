@@ -1,4 +1,5 @@
 import { Home, Target, Brain, Bell, User, Plus, ChevronRight, LogOut, Receipt } from "lucide-react";
+import { useNavigate } from "react-router-dom";
 import {
   Sidebar,
   SidebarContent,
@@ -22,6 +23,7 @@ interface AppSidebarProps {
 export function AppSidebar({ activeTab, onTabChange }: AppSidebarProps) {
   const { state } = useSidebar();
   const isCollapsed = state === "collapsed";
+  const navigate = useNavigate();
 
   const mainItems = [
     { id: "dashboard", label: "Início", icon: Home },
@@ -36,8 +38,15 @@ export function AppSidebar({ activeTab, onTabChange }: AppSidebarProps) {
     <Sidebar collapsible="icon" className="border-r border-border">
       <SidebarHeader className="border-b border-border p-4">
         <div className="flex items-center gap-2">
-          <div className="w-8 h-8 bg-gradient-to-r from-monevo-blue to-monevo-lightBlue rounded-lg flex items-center justify-center">
-            <span className="text-white font-bold text-sm">M</span>
+          <div className="w-8 h-8 rounded-lg overflow-hidden bg-white/0 flex items-center justify-center">
+            {/* Try loading /logo.svg (if you added your file as logo.svg in public), otherwise fallback to /placeholder.svg */}
+            <img
+              src="/logo.png"
+              alt="Monevo"
+              title="Monevo"
+              className="w-8 h-8 object-cover"
+            onError={(e) => { try { (e.currentTarget as HTMLImageElement).src = '/placeholder.svg'; } catch (err) { console.warn('Failed to load fallback logo', err); } }}
+            />
           </div>
           {!isCollapsed && (
             <div>
@@ -101,6 +110,10 @@ export function AppSidebar({ activeTab, onTabChange }: AppSidebarProps) {
           variant="ghost"
           className="w-full justify-start text-muted-foreground hover:text-foreground"
           size={isCollapsed ? "icon" : "default"}
+          onClick={() => {
+            // navigate to login
+            try { navigate('/auth', { replace: true }); } catch (e) { /* ignore */ }
+          }}
         >
           <LogOut className="h-5 w-5" />
           {!isCollapsed && <span className="ml-2">Sair</span>}

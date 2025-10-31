@@ -71,7 +71,8 @@ const Auth = () => {
       // Mock validation
       if (data.email === "teste@teste.com" && data.password === "123456") {
         toast.success("Login realizado com sucesso!");
-        navigate("/app");
+        // replace history so back button doesn't return to login
+        navigate("/index", { replace: true });
       } else {
         setError("Email ou senha incorretos");
       }
@@ -187,7 +188,7 @@ const Auth = () => {
                 type="button"
                 className="w-full"
                 disabled={isLoading}
-                onClick={() => navigate("/index")}
+                onClick={() => navigate("/onboarding", { replace: true })}
               >
                 Entrar (teste)
               </Button>

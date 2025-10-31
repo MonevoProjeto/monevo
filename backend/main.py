@@ -46,6 +46,7 @@ ALLOWED_ORIGINS = [
         "http://127.0.0.1:5173",   # se acessar pelo 127
         "http://localhost:8080",   # o seu caso atual
         "http://127.0.0.1:8080",   # segurança extra
+        "https://monevobackend-a7f8etedfze0atg6.centralus-01.azurewebsites.net"
 ]
 
 

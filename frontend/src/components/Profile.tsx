@@ -4,8 +4,6 @@ import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { 
   User, 
-  Settings, 
-  Bell, 
   Shield, 
   HelpCircle, 
   LogOut, 
@@ -13,6 +11,7 @@ import {
   Mail,
   Phone
 } from "lucide-react";
+import { useNavigate } from "react-router-dom";
 
 const Profile = () => {
   const user = {
@@ -23,6 +22,8 @@ const Profile = () => {
     avatar: ""
   };
 
+  const navigate = useNavigate();
+
   const menuItems = [
     {
       icon: User,
@@ -31,22 +32,10 @@ const Profile = () => {
       action: () => console.log("Editar perfil")
     },
     {
-      icon: Bell,
-      title: "Notificações",
-      description: "Configure suas preferências de notificação",
-      action: () => console.log("Notificações")
-    },
-    {
       icon: Shield,
       title: "Segurança",
       description: "Senha e configurações de segurança",
       action: () => console.log("Segurança")
-    },
-    {
-      icon: Settings,
-      title: "Configurações",
-      description: "Personalize o aplicativo",
-      action: () => console.log("Configurações")
     },
     {
       icon: HelpCircle,
@@ -137,7 +126,7 @@ const Profile = () => {
         <CardContent className="p-4">
           <div className="text-center space-y-2">
             <h3 className="font-bold text-monevo-blue text-lg">Monevo</h3>
-            <p className="text-sm text-gray-500">Versão 1.0.0</p>
+            <p className="text-sm text-gray-500">Versão 2.0.0</p>
             <p className="text-xs text-gray-400">
               Desenvolvido com ❤️ para sua organização financeira
             </p>
@@ -149,7 +138,7 @@ const Profile = () => {
       <Button 
         variant="outline" 
         className="w-full border-red-200 text-red-600 hover:bg-red-50 hover:border-red-300 py-3"
-        onClick={() => console.log("Logout")}
+        onClick={() => { try { navigate('/auth', { replace: true }); } catch (e) { console.warn('logout nav failed', e); } }}
       >
         <LogOut className="h-5 w-5 mr-2" />
         Sair do Aplicativo

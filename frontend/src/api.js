@@ -5,6 +5,10 @@ const BASE_URL = import.meta.env.VITE_API_URL ?? 'http://127.0.0.1:8000';
 console.log('[API] BASE_URL =', BASE_URL); // <-- ADICIONE
 export { BASE_URL }; // <-- ADICIONE
 
+// Nota: a variável VITE_API_URL deve ser definida em um arquivo .env (ex: frontend/.env.production)
+// Exemplo (não executar em JS):
+// VITE_API_URL='https://monevobackend-a7f8etedfze0atg6.centralus-01.azurewebsites.net'
+
 
 // Helper para tratar respostas
 async function handleResponse(res) {
@@ -14,6 +18,27 @@ async function handleResponse(res) {
   }
   return res.json();
 }
+
+ 
+// GET /transacoes - listar transacoes com query params simples
+export async function listarTransacoes(params = {}) {
+  try {
+    const qs = new URLSearchParams();
+    Object.entries(params).forEach(([k, v]) => {
+      if (v === undefined || v === null) return;
+      // Dates should be ISO strings
+      if (v instanceof Date) qs.append(k, v.toISOString());
+      else qs.append(k, String(v));
+    });
+    const url = `${BASE_URL}/transacoes${qs.toString() ? `?${qs.toString()}` : ''}`;
+    const response = await fetch(url);
+    return await handleResponse(response);
+  } catch (err) {
+    console.error('Erro ao listar transações:', err);
+    throw err;
+  }
+}
+
 
 // GET /metas - Listar todas as metas
 export async function listarMetas() {
