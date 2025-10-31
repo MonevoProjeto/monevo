@@ -46,7 +46,8 @@ ALLOWED_ORIGINS = [
         "http://127.0.0.1:5173",   # se acessar pelo 127
         "http://localhost:8080",   # o seu caso atual
         "http://127.0.0.1:8080",   # segurança extra
-        "https://monevobackend-a7f8etedfze0atg6.centralus-01.azurewebsites.net"
+        "https://monevobackend-a7f8etedfze0atg6.centralus-01.azurewebsites.net",
+        "https://agreeable-bay-022216d10.3.azurestaticapps.net"
 ]
 
 
@@ -146,7 +147,12 @@ def deletar_meta(meta_id: int, db: Session = Depends(get_db)):
 
 app.add_middleware(
     CORSMiddleware,
+    # Keep explicit allowed origins and also accept Azure Static Apps subdomains
     allow_origins=ALLOWED_ORIGINS,
+    # Some hosting setups (Static Web Apps) create dynamic subdomains; this regex
+    # permits any subdomain under `azurestaticapps.net`. Adjust/remove for tighter
+    # security in production if needed.
+    allow_origin_regex=r"^https:\/\/.*\.azurestaticapps\.net$",
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
