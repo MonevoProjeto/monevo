@@ -140,8 +140,13 @@ SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 # === Schema alvo no Azure SQL ===
 SCHEMA = os.getenv("DB_SCHEMA", "dbo")  # você pode mudar via App Settings se quiser
 
-# Use um MetaData com schema fixo
-metadata = MetaData(schema=SCHEMA)
+# Use um MetaData com schema apenas quando não estivermos em SQLite.
+# SQLite não suporta schemas (ex: dbo) e isso causava erros ao criar tabelas.
+if DATABASE_URL.startswith("sqlite"):
+    metadata = MetaData()  # sem schema em ambientes SQLite locais
+else:
+    metadata = MetaData(schema=SCHEMA)
+
 Base = declarative_base(metadata=metadata)
 
 # (Opcional) teste rápido de conexão já no startup:
@@ -254,7 +259,65 @@ class UsuarioTable(Base):
     id = Column(Integer, primary_key=True, index=True)
     nome = Column(String(100), nullable=False)
     email = Column(String(120), unique=True, index=True, nullable=False)
-    senha = Column(String(255), nullable=False)
+    # armazenamos o hash da senha no campo 'senha_hash' para ficar explícito
+    senha_hash = Column(String(255), nullable=False)
+    curso = Column(String(100), nullable=True)
+    data_criacao = Column(DateTime, default=datetime.utcnow)
+
+
+# -------------------------
+# Produtos / Fotos
+# -------------------------
+class ProdutoTable(Base):
+    __tablename__ = "produtos"
+    id = Column(Integer, primary_key=True, index=True)
+    titulo = Column(String(200), nullable=False)
+    descricao = Column(Text, nullable=True)
+    preco = Column(Float, nullable=False, default=0.0)
+    categoria = Column(String(80), nullable=False)
+    vendedor = Column(String(120), nullable=True)
+    usuario_id = Column(Integer, nullable=False, index=True)
+    data_criacao = Column(DateTime, default=datetime.utcnow)
+
+
+class FotoTable(Base):
+    __tablename__ = "fotos"
+    id = Column(Integer, primary_key=True, index=True)
+    produto_id = Column(Integer, ForeignKey("produtos.id"), nullable=False)
+    caminho = Column(String(255), nullable=False)
+    criado_em = Column(DateTime, default=datetime.utcnow)
+
+
+# -------------------------
+# Onboarding (perfil + metas/objetivos)
+# -------------------------
+class OnboardingProfileTable(Base):
+    __tablename__ = "onboarding_profiles"
+    id = Column(Integer, primary_key=True, index=True)
+    usuario_id = Column(Integer, nullable=False, index=True)
+    age = Column(Integer, nullable=True)
+    profession = Column(String(120), nullable=True)
+    cpf = Column(String(32), nullable=True)
+    marital_status = Column(String(40), nullable=True)
+    current_balance = Column(String(64), nullable=True)  # armazenamos como texto formatado (ex: R$ 1.000,00)
+    monthly_income_type = Column(String(20), nullable=True)
+    monthly_income_value = Column(String(64), nullable=True)
+    monthly_income_range = Column(String(64), nullable=True)
+    monthly_revenue = Column(String(64), nullable=True)
+    monthly_expense = Column(String(64), nullable=True)
+    monthly_investment = Column(String(64), nullable=True)
+    expenses_json = Column(Text, nullable=True)  # despesas por categoria como JSON
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+
+class OnboardingGoalTable(Base):
+    __tablename__ = "onboarding_goals"
+    id = Column(Integer, primary_key=True, index=True)
+    onboarding_id = Column(Integer, ForeignKey("onboarding_profiles.id"), nullable=False)
+    name = Column(String(200), nullable=False)
+    value = Column(String(64), nullable=True)  # manter formato original
+    months = Column(Integer, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
 
 # -------------------------
 # Helpers (criar/seed/db)

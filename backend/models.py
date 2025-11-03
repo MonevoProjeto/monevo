@@ -1,6 +1,6 @@
 from pydantic import BaseModel, Field, ConfigDict, condecimal, validator,  EmailStr
 from datetime import date, datetime
-from typing import Optional
+from typing import Optional, List
 
 
 # categorias do wireframe
@@ -285,3 +285,90 @@ class Usuario(UsuarioBase):
 
     class Config:
         orm_mode = True
+
+# -------------------------
+# Autenticação / Produtos (schemas adicionais)
+# -------------------------
+class UsuarioLogin(BaseModel):
+    email: EmailStr
+    senha: str
+
+
+class LoginResponse(BaseModel):
+    token: str
+    usuario: Usuario
+
+
+class UsuarioComProdutos(Usuario):
+    total_produtos: int
+
+
+class ProdutoBase(BaseModel):
+    titulo: str
+    descricao: Optional[str] = None
+    preco: float
+    categoria: str
+    vendedor: Optional[str] = None
+
+
+class ProdutoCreate(ProdutoBase):
+    pass
+
+
+class Produto(ProdutoBase):
+    id: int
+    usuario_id: int
+    data_criacao: Optional[datetime] = None
+
+    class Config:
+        orm_mode = True
+
+
+class Foto(BaseModel):
+    id: int
+    produto_id: int
+    caminho: str
+    criado_em: Optional[datetime] = None
+
+    class Config:
+        orm_mode = True
+
+
+# -------------------------
+# Onboarding schemas
+# -------------------------
+class OnboardingGoalCreate(BaseModel):
+    name: str
+    value: str
+    months: Optional[int] = None
+
+
+class OnboardingStep1(BaseModel):
+    name: str
+    email: EmailStr
+    password: str
+    age: Optional[int] = None
+    profession: Optional[str] = None
+    cpf: Optional[str] = None
+    maritalStatus: Optional[str] = None
+
+
+class OnboardingStep2(BaseModel):
+    currentBalance: Optional[str] = None
+    monthlyIncomeType: Optional[str] = None
+    monthlyIncomeValue: Optional[str] = None
+    monthlyIncomeRange: Optional[str] = None
+
+
+class OnboardingStep3(BaseModel):
+    monthlyRevenue: Optional[str] = None
+    monthlyExpense: Optional[str] = None
+    monthlyInvestment: Optional[str] = None
+    goals: Optional[List[OnboardingGoalCreate]] = []
+
+
+class OnboardingCreate(BaseModel):
+    step1: Optional[OnboardingStep1] = None
+    step2: Optional[OnboardingStep2] = None
+    step3: Optional[OnboardingStep3] = None
+    step4: Optional[dict] = None  # despesas por categoria

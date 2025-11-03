@@ -1,6 +1,6 @@
-from fastapi import FastAPI, HTTPException, Depends
+from fastapi import FastAPI, HTTPException, Depends, UploadFile, File
 from fastapi.middleware.cors import CORSMiddleware
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 from sqlalchemy import or_, func
 from typing import List, Optional
 import os
@@ -11,11 +11,27 @@ from contextlib import asynccontextmanager
 import os, logging
 
 
-from models import Meta, MetaCreate, MetaUpdate, CategoriaRead, CategoriaCreate, CategoriaUpdate, ContaCreate, ContaRead, ContaUpdate,RecorrenciaCreate, RecorrenciaRead, RecorrenciaUpdate, TransacaoCreate, TransacaoRead, TransacaoUpdate, FaturaRead
+from models import (
+    Meta, MetaCreate, MetaUpdate,
+    CategoriaRead, CategoriaCreate, CategoriaUpdate,
+    ContaCreate, ContaRead, ContaUpdate,
+    RecorrenciaCreate, RecorrenciaRead, RecorrenciaUpdate,
+    TransacaoCreate, TransacaoRead, TransacaoUpdate,
+    FaturaRead,
+    Usuario, UsuarioCreate, LoginResponse,
+    Produto, ProdutoCreate, Foto,
+    OnboardingCreate
+)
 
-from database import get_db, create_tables, populate_initial_data, Conta, Recorrencia, Categoria, Transacao, MetaTable, UsuarioTable
+from database import (
+    get_db, create_tables, populate_initial_data,
+    Conta, Recorrencia, Categoria, Transacao, MetaTable, UsuarioTable,
+    ProdutoTable, FotoTable,
+    OnboardingProfileTable, OnboardingGoalTable,
+)
 
-from models import Meta, MetaCreate, Usuario, UsuarioCreate
+from auth import pegar_usuario_atual, criar_hash_senha, criar_token
+from auth_routes import router as auth_router
 
 
 logging.basicConfig(level=logging.INFO)
@@ -40,6 +56,9 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(title="Monevo API", version="1.0.0",lifespan=lifespan)
 
+# registrar rotas de autenticação (/auth)
+app.include_router(auth_router)
+
 # ajuste as origens conforme seu ambiente
 ALLOWED_ORIGINS = [
         "http://localhost:5173",   # se estiver usando Vite padrão
@@ -47,7 +66,9 @@ ALLOWED_ORIGINS = [
         "http://localhost:8080",   # o seu caso atual
         "http://127.0.0.1:8080",   # segurança extra
         "https://monevobackend-a7f8etedfze0atg6.centralus-01.azurewebsites.net",
-        "https://agreeable-bay-022216d10.3.azurestaticapps.net"
+        "https://agreeable-bay-022216d10.3.azurestaticapps.net",
+        "http://localhost:8082",
+        "http://127.0.0.1:8082",
 ]
 
 
@@ -522,6 +543,136 @@ def gerar_fatura(conta_cartao_id: int, inicio: date, fim: date, db: Session = De
     return result
 
 
+# -----------------------------------
+# PRODUTOS (CRUD + UPLOAD)
+# -----------------------------------
+
+CATEGORIAS_VALIDAS = ["eletrônicos", "roupas", "cosméticos", "livros"]  # exemplo de categorias válidas
+
+@app.get("/produtos", response_model=List[Produto])
+def listar_produtos(db: Session = Depends(get_db)):
+    produtos = db.query(ProdutoTable).order_by(ProdutoTable.data_criacao.desc()).all()
+    return produtos
+
+
+@app.post("/produtos", response_model=Produto, status_code=201)
+def criar_produto(
+    produto: ProdutoCreate, 
+    user_id: int = Depends(pegar_usuario_atual),  # AUTENTICAÇÃO
+    db: Session = Depends(get_db)
+):
+    if produto.categoria not in CATEGORIAS_VALIDAS:
+        raise HTTPException(
+            status_code=422, 
+            detail=f"Categoria inválida. Use uma destas: {', '.join(CATEGORIAS_VALIDAS)}"
+        )
+    
+    db_produto = ProdutoTable(
+        titulo=produto.titulo,
+        descricao=produto.descricao,
+        preco=produto.preco,
+        categoria=produto.categoria,
+        vendedor=produto.vendedor,
+        usuario_id=user_id
+    )
+    
+    db.add(db_produto)
+    db.commit()
+    db.refresh(db_produto)
+    return db_produto
+
+
+@app.put("/produtos/{produto_id}", response_model=Produto)
+def atualizar_produto(
+    produto_id: int, 
+    produto_atualizado: ProdutoCreate, 
+    user_id: int = Depends(pegar_usuario_atual),  # AUTENTICAÇÃO
+    db: Session = Depends(get_db)
+):
+    produto = db.query(ProdutoTable).filter(ProdutoTable.id == produto_id).first()
+    if not produto:
+        raise HTTPException(status_code=404, detail="Produto não encontrado")
+    
+    if produto.usuario_id != user_id:
+        raise HTTPException(
+            status_code=403, 
+            detail="Você não pode editar este produto! Apenas o dono pode."
+        )
+    
+    if produto_atualizado.categoria not in CATEGORIAS_VALIDAS:
+        raise HTTPException(
+            status_code=422, 
+            detail=f"Categoria inválida. Use uma destas: {', '.join(CATEGORIAS_VALIDAS)}"
+        )
+    
+    produto.titulo = produto_atualizado.titulo
+    produto.descricao = produto_atualizado.descricao
+    produto.preco = produto_atualizado.preco
+    produto.categoria = produto_atualizado.categoria
+    produto.vendedor = produto_atualizado.vendedor
+    
+    db.commit()
+    db.refresh(produto)
+    return produto
+
+
+@app.delete("/produtos/{produto_id}")
+def deletar_produto(
+    produto_id: int, 
+    user_id: int = Depends(pegar_usuario_atual),  # AUTENTICAÇÃO
+    db: Session = Depends(get_db)
+):
+    produto = db.query(ProdutoTable).filter(ProdutoTable.id == produto_id).first()
+    if not produto:
+        raise HTTPException(status_code=404, detail="Produto não encontrado")
+    
+    if produto.usuario_id != user_id:
+        raise HTTPException(
+            status_code=403, 
+            detail="Você não pode deletar este produto! Apenas o dono pode."
+        )
+    
+    db.delete(produto)
+    db.commit()
+    return {"message": "Produto removido com sucesso"}
+
+
+@app.post("/produtos/{produto_id}/fotos", response_model=Foto)
+async def upload_foto(
+    produto_id: int, 
+    file: UploadFile = File(...),
+    user_id: int = Depends(pegar_usuario_atual),  # AUTENTICAÇÃO
+    db: Session = Depends(get_db)
+):
+    produto = db.query(ProdutoTable).filter(ProdutoTable.id == produto_id).first()
+    if not produto:
+        raise HTTPException(status_code=404, detail="Produto não encontrado")
+    
+    if produto.usuario_id != user_id:
+        raise HTTPException(
+            status_code=403, 
+            detail="Você só pode adicionar fotos aos seus próprios produtos!"
+        )
+    
+    if not file.content_type.startswith("image/"):
+        raise HTTPException(status_code=422, detail="Arquivo deve ser uma imagem")
+    
+    caminho = f"uploads/{produto_id}_{file.filename}"
+    os.makedirs(os.path.dirname(caminho), exist_ok=True)
+    with open(caminho, "wb") as f:
+        f.write(await file.read())
+    
+    foto = FotoTable(
+        produto_id=produto_id,
+        caminho=caminho,
+        criado_em=datetime.utcnow()
+    )
+    db.add(foto)
+    db.commit()
+    db.refresh(foto)
+    return foto
+
+
 @app.post("/usuarios/", response_model=Usuario, status_code=201)
 def criar_usuario(usuario: UsuarioCreate, db: Session = Depends(get_db)):
     """Cria um novo usuário com senha criptografada"""
@@ -534,7 +685,7 @@ def criar_usuario(usuario: UsuarioCreate, db: Session = Depends(get_db)):
     novo_usuario = UsuarioTable(
         nome=usuario.nome,
         email=usuario.email,
-        senha=senha_hash,
+        senha_hash=senha_hash,
     )
     db.add(novo_usuario)
     db.commit()
@@ -547,6 +698,71 @@ def listar_usuarios(db: Session = Depends(get_db)):
     """Lista todos os usuários cadastrados"""
     usuarios = db.query(UsuarioTable).all()
     return usuarios
+
+
+@app.post("/onboarding", response_model=LoginResponse, status_code=201)
+def submit_onboarding(payload: OnboardingCreate, db: Session = Depends(get_db)):
+    """Recebe todos os passos do onboarding, cria usuário, perfil e metas.
+
+    Retorna token e dados do usuário (mesma forma do /auth/login).
+    """
+    # step1 com dados mínimos é obrigatório
+    step1 = payload.step1
+    if not step1:
+        raise HTTPException(status_code=422, detail="step1 é obrigatório com name/email/password")
+
+    # Verifica se usuário já existe
+    existente = db.query(UsuarioTable).filter(UsuarioTable.email == step1.email).first()
+    if existente:
+        raise HTTPException(status_code=422, detail="Usuário com este email já existe")
+
+    # Criar usuário
+    senha_hash = criar_hash_senha(step1.password)
+    novo_usuario = UsuarioTable(
+        nome=step1.name,
+        email=step1.email,
+        senha_hash=senha_hash,
+        curso=step1.profession
+    )
+    db.add(novo_usuario)
+    db.commit()
+    db.refresh(novo_usuario)
+
+    # Criar perfil de onboarding
+    profile = OnboardingProfileTable(
+        usuario_id=novo_usuario.id,
+        age=step1.age,
+        profession=step1.profession,
+        cpf=step1.cpf,
+        marital_status=step1.maritalStatus,
+        current_balance=(payload.step2.currentBalance if payload.step2 else None),
+        monthly_income_type=(payload.step2.monthlyIncomeType if payload.step2 else None),
+        monthly_income_value=(payload.step2.monthlyIncomeValue if payload.step2 else None),
+        monthly_income_range=(payload.step2.monthlyIncomeRange if payload.step2 else None),
+        monthly_revenue=(payload.step3.monthlyRevenue if payload.step3 else None),
+        monthly_expense=(payload.step3.monthlyExpense if payload.step3 else None),
+        monthly_investment=(payload.step3.monthlyInvestment if payload.step3 else None),
+        expenses_json=(__import__('json').dumps(payload.step4) if payload.step4 else None)
+    )
+    db.add(profile)
+    db.commit()
+    db.refresh(profile)
+
+    # Criar metas/objetivos
+    if payload.step3 and payload.step3.goals:
+        for g in payload.step3.goals:
+            goal = OnboardingGoalTable(
+                onboarding_id=profile.id,
+                name=g.name,
+                value=g.value,
+                months=(g.months or None)
+            )
+            db.add(goal)
+        db.commit()
+
+    # Gerar token e retornar resposta compatível com /auth/login
+    token = criar_token(novo_usuario.id)
+    return {"token": token, "usuario": Usuario.from_orm(novo_usuario)}
 
 
 
