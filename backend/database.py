@@ -267,6 +267,30 @@ class UsuarioTable(Base):
     senha_hash = Column(String(255), nullable=False)
   #  data_criacao = Column(DateTime, default=datetime.utcnow)
 
+'''
+# -------------------------
+# Produtos / Fotos
+# -------------------------
+class ProdutoTable(Base):
+    __tablename__ = "produtos"
+    id = Column(Integer, primary_key=True, index=True)
+    titulo = Column(String(200), nullable=False)
+    descricao = Column(Text, nullable=True)
+    preco = Column(Float, nullable=False, default=0.0)
+    categoria = Column(String(80), nullable=False)
+    vendedor = Column(String(120), nullable=True)
+    usuario_id = Column(Integer, nullable=False, index=True)
+    data_criacao = Column(DateTime, default=datetime.utcnow)
+
+
+class FotoTable(Base):
+    __tablename__ = "fotos"
+    id = Column(Integer, primary_key=True, index=True)
+    produto_id = Column(Integer, ForeignKey("produtos.id"), nullable=False)
+    caminho = Column(String(255), nullable=False)
+    criado_em = Column(DateTime, default=datetime.utcnow)
+
+'''
 """
 Produtos/Fotos foram removidos do modelo — este bloco foi apagado intencionalmente.
 """
