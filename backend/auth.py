@@ -1,8 +1,9 @@
 import jwt
 from datetime import datetime, timedelta
 from passlib.context import CryptContext
-from fastapi import HTTPException, Depends, Request
+from fastapi import HTTPException, Depends
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
+from typing import Any, Dict
 import os
 
 # Configuração do bcrypt (para hash de senhas)
@@ -58,7 +59,7 @@ def criar_token(user_id: int) -> str:
     return token
 
 
-def verificar_token(token: str) -> dict:
+def verificar_token(token: str) -> Dict[str, Any]:
     """
     Valida token e retorna informações
     
@@ -84,4 +85,8 @@ def pegar_usuario_atual(credentials: HTTPAuthorizationCredentials = Depends(secu
     """
     token = credentials.credentials
     payload = verificar_token(token)
-    return payload['user_id']
+    # Garantir que o payload contenha user_id
+    try:
+        return int(payload['user_id'])
+    except Exception:
+        raise HTTPException(status_code=401, detail="Token inválido: user_id ausente")

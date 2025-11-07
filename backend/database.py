@@ -164,6 +164,10 @@ Base = declarative_base(metadata=metadata)
 class MetaTable(Base):
     __tablename__ = "metas"
     id = Column(Integer, primary_key=True, index=True)
+    # --- ADICIONADO ---
+    # Adiciona a coluna para saber quem é o dono da meta
+    # (Assume que 'usuarios.id' é a chave primária da UsuarioTable)
+    usuario_id = Column(Integer, ForeignKey("usuarios.id"), nullable=False, index=True)
     titulo = Column(String(120), nullable=False)
     descricao = Column(String(255), nullable=True)
     categoria = Column(String(40), nullable=False, index=True)
@@ -261,32 +265,11 @@ class UsuarioTable(Base):
     email = Column(String(120), unique=True, index=True, nullable=False)
     # armazenamos o hash da senha no campo 'senha_hash' para ficar explícito
     senha_hash = Column(String(255), nullable=False)
-    curso = Column(String(100), nullable=True)
-    data_criacao = Column(DateTime, default=datetime.utcnow)
+  #  data_criacao = Column(DateTime, default=datetime.utcnow)
 
-
-# -------------------------
-# Produtos / Fotos
-# -------------------------
-class ProdutoTable(Base):
-    __tablename__ = "produtos"
-    id = Column(Integer, primary_key=True, index=True)
-    titulo = Column(String(200), nullable=False)
-    descricao = Column(Text, nullable=True)
-    preco = Column(Float, nullable=False, default=0.0)
-    categoria = Column(String(80), nullable=False)
-    vendedor = Column(String(120), nullable=True)
-    usuario_id = Column(Integer, nullable=False, index=True)
-    data_criacao = Column(DateTime, default=datetime.utcnow)
-
-
-class FotoTable(Base):
-    __tablename__ = "fotos"
-    id = Column(Integer, primary_key=True, index=True)
-    produto_id = Column(Integer, ForeignKey("produtos.id"), nullable=False)
-    caminho = Column(String(255), nullable=False)
-    criado_em = Column(DateTime, default=datetime.utcnow)
-
+"""
+Produtos/Fotos foram removidos do modelo — este bloco foi apagado intencionalmente.
+"""
 
 # -------------------------
 # Onboarding (perfil + metas/objetivos)
@@ -294,29 +277,34 @@ class FotoTable(Base):
 class OnboardingProfileTable(Base):
     __tablename__ = "onboarding_profiles"
     id = Column(Integer, primary_key=True, index=True)
-    usuario_id = Column(Integer, nullable=False, index=True)
-    age = Column(Integer, nullable=True)
-    profession = Column(String(120), nullable=True)
+    # vincula explicitamente ao usuário (integridade referencial)
+    usuario_id = Column(Integer, ForeignKey("usuarios.id"), nullable=False, index=True)
+    # relacionamento ORM opcional para navegar do perfil ao usuário
+    usuario = relationship("UsuarioTable", backref="onboarding_profiles")
+    idade = Column(Integer, nullable=True)
+    profissao = Column(String(120), nullable=True)
     cpf = Column(String(32), nullable=True)
-    marital_status = Column(String(40), nullable=True)
-    current_balance = Column(String(64), nullable=True)  # armazenamos como texto formatado (ex: R$ 1.000,00)
-    monthly_income_type = Column(String(20), nullable=True)
-    monthly_income_value = Column(String(64), nullable=True)
-    monthly_income_range = Column(String(64), nullable=True)
-    monthly_revenue = Column(String(64), nullable=True)
-    monthly_expense = Column(String(64), nullable=True)
-    monthly_investment = Column(String(64), nullable=True)
-    expenses_json = Column(Text, nullable=True)  # despesas por categoria como JSON
+    estado_civil = Column(String(40), nullable=True)
+    saldo_atual = Column(String(64), nullable=True)  # armazenamos como texto formatado (ex: R$ 1.000,00)
+    tipo_renda_mensal = Column(String(20), nullable=True)
+    valor_renda_mensal = Column(String(64), nullable=True)
+    faixa_renda_mensal = Column(String(64), nullable=True)
+    renda_mensal = Column(String(64), nullable=True)
+    despesa_mensal = Column(String(64), nullable=True)
+    investimento_mensal = Column(String(64), nullable=True)
+    despesas_json = Column(Text, nullable=True)  # despesas por categoria como JSON
     created_at = Column(DateTime, default=datetime.utcnow)
+
+# com a FK --> agora tem um vinculo explicito entre o perfil do onboarding e a conta do usuario
 
 
 class OnboardingGoalTable(Base):
     __tablename__ = "onboarding_goals"
     id = Column(Integer, primary_key=True, index=True)
     onboarding_id = Column(Integer, ForeignKey("onboarding_profiles.id"), nullable=False)
-    name = Column(String(200), nullable=False)
-    value = Column(String(64), nullable=True)  # manter formato original
-    months = Column(Integer, nullable=True)
+    nome = Column(String(200), nullable=False)
+    valor = Column(String(64), nullable=True)  # manter formato original
+    meses = Column(Integer, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
 
 # -------------------------
@@ -340,6 +328,35 @@ def create_tables():
             print("Tabelas (sem schema explícito):", insp.get_table_names())
         except Exception as e:
             print("Falha ao listar default:", repr(e))
+
+        # --- Migrações simples (SQLite local) ---
+        # Se o banco local já existia com um schema antigo, algumas colunas podem faltar.
+        # Corrigimos automaticamente casos simples, como a ausência de `senha_hash`.
+        try:
+            if 'usuarios' in insp.get_table_names():
+                cols = [c['name'] for c in insp.get_columns('usuarios')]
+                # Se falta senha_hash, adiciona a coluna e tenta copiar de `senha` se existir
+                if 'senha_hash' not in cols:
+                    print("Migração: coluna 'senha_hash' ausente — adicionando...")
+                    with engine.connect() as conn:
+                        # Adiciona a coluna (SQLite permite ADD COLUMN)
+                        conn.exec_driver_sql("ALTER TABLE usuarios ADD COLUMN senha_hash TEXT")
+                        # Se existia coluna `senha`, copia seu conteúdo para `senha_hash`
+                        if 'senha' in cols:
+                            conn.exec_driver_sql("UPDATE usuarios SET senha_hash = senha WHERE senha_hash IS NULL OR senha_hash = ''")
+                    print("Migração: coluna 'senha_hash' adicionada com sucesso.")
+                # Se falta data_criacao, adiciona com default CURRENT_TIMESTAMP
+                if 'data_criacao' not in cols:
+                    try:
+                        print("Migração: coluna 'data_criacao' ausente — adicionando...")
+                        with engine.connect() as conn:
+                            # SQLite aceita DEFAULT CURRENT_TIMESTAMP
+                            conn.exec_driver_sql("ALTER TABLE usuarios ADD COLUMN data_criacao DATETIME DEFAULT (CURRENT_TIMESTAMP)")
+                        print("Migração: coluna 'data_criacao' adicionada com sucesso.")
+                    except Exception as e:
+                        print("Aviso: falha ao adicionar data_criacao:", repr(e))
+        except Exception as e:
+            print("Aviso: falha ao aplicar migrações simples:", repr(e))
 
         print("Tabelas criadas/verificadas com sucesso!")
     except Exception as e:

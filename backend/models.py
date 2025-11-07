@@ -131,7 +131,7 @@ class CategoriaUpdate(BaseModel):
 # Conta (Pydantic schemas)
 # -------------------------
 class ContaBase(BaseModel):
-    usuario_id: int
+    usuario_id: Optional[int] = None
     tipo: str = Field(..., description="Tipo: 'banco' | 'cartao' | 'carteira'")
     nome: str = Field(..., min_length=1, max_length=120)
     fechamento_cartao_dia: Optional[int] = Field(None, ge=1, le=31)
@@ -161,7 +161,7 @@ class ContaUpdate(BaseModel):
 # Recorrencia (Pydantic schemas)
 # -------------------------
 class RecorrenciaBase(BaseModel):
-    usuario_id: int
+    usuario_id: Optional[int] = None
     nome: str = Field(..., min_length=1, max_length=120)
     tipo: str = Field(..., description="'receita'|'despesa'")
     periodicidade: Optional[str] = Field(None, description="'mensal'|'semanal'|'anual'")
@@ -198,7 +198,7 @@ class RecorrenciaUpdate(BaseModel):
 # Transacao (Pydantic schemas)
 # -------------------------
 class TransacaoBase(BaseModel):
-    usuario_id: int
+    usuario_id: Optional[int] = None
     data: Optional[datetime] = None
     valor: float = Field(..., gt=0, description="Valor sempre positivo; tipo define despesa/receita")
     tipo: str = Field(..., description="'despesa'|'receita'|'transferencia'|'investimento'")
@@ -277,17 +277,20 @@ class UsuarioBase(BaseModel):
 
 
 class UsuarioCreate(UsuarioBase):
+    """Dados para criar nova conta (não incluir campos sensíveis no retorno)"""
     senha: str = Field(..., min_length=6, description="Senha do usuário (será criptografada)")
 
 
 class Usuario(UsuarioBase):
+    """Representação pública do usuário (sem senha)"""
     id: int
+    data_criacao: Optional[datetime] = None
 
-    class Config:
-        orm_mode = True
+    
+    model_config = ConfigDict(from_attributes=True)
 
 # -------------------------
-# Autenticação / Produtos (schemas adicionais)
+# Autenticação (schemas adicionais)
 # -------------------------
 class UsuarioLogin(BaseModel):
     email: EmailStr
@@ -299,72 +302,37 @@ class LoginResponse(BaseModel):
     usuario: Usuario
 
 
-class UsuarioComProdutos(Usuario):
-    total_produtos: int
-
-
-class ProdutoBase(BaseModel):
-    titulo: str
-    descricao: Optional[str] = None
-    preco: float
-    categoria: str
-    vendedor: Optional[str] = None
-
-
-class ProdutoCreate(ProdutoBase):
-    pass
-
-
-class Produto(ProdutoBase):
-    id: int
-    usuario_id: int
-    data_criacao: Optional[datetime] = None
-
-    class Config:
-        orm_mode = True
-
-
-class Foto(BaseModel):
-    id: int
-    produto_id: int
-    caminho: str
-    criado_em: Optional[datetime] = None
-
-    class Config:
-        orm_mode = True
-
-
 # -------------------------
 # Onboarding schemas
 # -------------------------
 class OnboardingGoalCreate(BaseModel):
-    name: str
-    value: str
-    months: Optional[int] = None
+    nome: str
+    valor: str
+    meses: Optional[int] = None
 
 
 class OnboardingStep1(BaseModel):
-    name: str
+    nome: str
     email: EmailStr
-    password: str
-    age: Optional[int] = None
-    profession: Optional[str] = None
+    senha: str
+    idade: Optional[int] = None
+    profissao: Optional[str] = None
     cpf: Optional[str] = None
-    maritalStatus: Optional[str] = None
+    estadoCivil: Optional[str] = None
 
 
 class OnboardingStep2(BaseModel):
-    currentBalance: Optional[str] = None
-    monthlyIncomeType: Optional[str] = None
-    monthlyIncomeValue: Optional[str] = None
-    monthlyIncomeRange: Optional[str] = None
+    saldoAtual: Optional[str] = None
+    tipoRendaMensal: Optional[str] = None
+    valorRendaMensal: Optional[str] = None
+    faixaRendaMensal: Optional[str] = None
 
 
 class OnboardingStep3(BaseModel):
-    monthlyRevenue: Optional[str] = None
-    monthlyExpense: Optional[str] = None
-    monthlyInvestment: Optional[str] = None
-    goals: Optional[List[OnboardingGoalCreate]] = []
+    rendaMensal: Optional[str] = None
+    despesaMensal: Optional[str] = None
+    investimentoMensal: Optional[str] = None
+    metas: Optional[List[OnboardingGoalCreate]] = []
 
 
 class OnboardingCreate(BaseModel):
@@ -372,3 +340,39 @@ class OnboardingCreate(BaseModel):
     step2: Optional[OnboardingStep2] = None
     step3: Optional[OnboardingStep3] = None
     step4: Optional[dict] = None  # despesas por categoria
+
+
+# --- Schemas para leitura/atualização de perfil (sem retornar senha) ---
+class OnboardingStep1Read(BaseModel):
+    nome: Optional[str] = None
+    email: Optional[EmailStr] = None
+    idade: Optional[int] = None
+    profissao: Optional[str] = None
+    cpf: Optional[str] = None
+    estadoCivil: Optional[str] = None
+
+
+class OnboardingRead(BaseModel):
+    step1: Optional[OnboardingStep1Read] = None
+    step2: Optional[OnboardingStep2] = None
+    step3: Optional[OnboardingStep3] = None
+    step4: Optional[dict] = None
+    metas: Optional[List[OnboardingGoalCreate]] = []
+
+
+# Modelo para updates (senha opcional para permitir alteração de senha)
+class OnboardingStep1Update(BaseModel):
+    nome: Optional[str] = None
+    email: Optional[EmailStr] = None
+    senha: Optional[str] = None
+    idade: Optional[int] = None
+    profissao: Optional[str] = None
+    cpf: Optional[str] = None
+    estadoCivil: Optional[str] = None
+
+
+class OnboardingUpdate(BaseModel):
+    step1: Optional[OnboardingStep1Update] = None
+    step2: Optional[OnboardingStep2] = None
+    step3: Optional[OnboardingStep3] = None
+    step4: Optional[dict] = None
