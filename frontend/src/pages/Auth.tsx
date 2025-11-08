@@ -10,16 +10,18 @@ import { z } from "zod";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { toast } from "sonner";
+import { login as apiLogin } from "@/services/auth";
+import { useApp } from "@/contexts/AppContext";
 
 const loginSchema = z.object({
   email: z.string().email("Email inválido").min(1, "Email é obrigatório"),
-  password: z.string().min(6, "A senha deve ter no mínimo 6 caracteres"),
+  password: z.string().min(6, "A senha deve ter no mínimo 6 caracteres").max(72, "A senha deve ter no máximo 72 caracteres"),
 });
 
 const registerSchema = z.object({
   name: z.string().min(1, "Nome é obrigatório"),
   email: z.string().email("Email inválido").min(1, "Email é obrigatório"),
-  password: z.string().min(6, "A senha deve ter no mínimo 6 caracteres"),
+  password: z.string().min(6, "A senha deve ter no mínimo 6 caracteres").max(72, "A senha deve ter no máximo 72 caracteres"),
 });
 
 const forgotPasswordSchema = z.object({
@@ -35,6 +37,7 @@ const Auth = () => {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState("");
   const navigate = useNavigate();
+  const { setCurrentUser } = useApp();
 
   const loginForm = useForm<LoginForm>({
     resolver: zodResolver(loginSchema),
@@ -65,16 +68,19 @@ const Auth = () => {
     setError("");
     
     try {
-      // Simulated login - replace with actual Supabase auth
-      await new Promise((resolve) => setTimeout(resolve, 1500));
-      
-      // Mock validation
-      if (data.email === "teste@teste.com" && data.password === "123456") {
+      const res = await apiLogin(data.email, data.password);
+      if (res.sucesso) {
         toast.success("Login realizado com sucesso!");
-        // replace history so back button doesn't return to login
+        // armazenamento já feito pelo serviço (localStorage)
+        try {
+          const usuario = res.dados?.usuario;
+          if (usuario) setCurrentUser({ id: usuario.id, nome: usuario.nome || usuario.name || '', email: usuario.email, data_criacao: usuario.data_criacao || null });
+        } catch (e) {
+          // ignore
+        }
         navigate("/index", { replace: true });
       } else {
-        setError("Email ou senha incorretos");
+        setError(res.erro || "Email ou senha incorretos");
       }
     } catch (err) {
       setError("Erro ao fazer login. Tente novamente.");
@@ -88,12 +94,21 @@ const Auth = () => {
     setError("");
     
     try {
-      // Simulated register - replace with actual Supabase auth
-      await new Promise((resolve) => setTimeout(resolve, 1500));
-      
-      toast.success("Cadastro realizado com sucesso! Faça login para continuar.");
-      setMode("login");
-      loginForm.reset();
+      // Save registration draft locally and redirect to onboarding
+      const draft = {
+        name: data.name,
+        email: data.email,
+        password: data.password,
+        created_at: new Date().toISOString(),
+      };
+      try {
+        localStorage.setItem('monevo_registration', JSON.stringify(draft));
+      } catch (e) {
+        console.warn('Could not save registration draft to localStorage', e);
+      }
+      toast.success("Cadastro salvo. Vamos configurar seu perfil.");
+      navigate("/onboarding", { replace: true });
+      registerForm.reset();
     } catch (err) {
       setError("Erro ao criar conta. Tente novamente.");
     } finally {
@@ -163,7 +178,8 @@ const Auth = () => {
                   id="login-password"
                   type="password"
                   placeholder="••••••"
-                  {...loginForm.register("password")}
+                    {...loginForm.register("password")}
+                    maxLength={72}
                   disabled={isLoading}
                 />
                 {loginForm.formState.errors.password && (
@@ -173,24 +189,17 @@ const Auth = () => {
                 )}
               </div>
 
-              <Button
-                type="button"
-                variant="link"
-                className="px-0 font-normal"
-                onClick={() => setMode("forgot")}
-                disabled={isLoading}
-              >
-                Esqueci minha senha
-              </Button>
+              {/* 'Esqueci minha senha' removido conforme solicitado */}
 
-              {/* Temporário: navegar direto para a página de Index para testes sem validação */}
-              <Button
-                type="button"
-                className="w-full"
-                disabled={isLoading}
-                onClick={() => navigate("/onboarding", { replace: true })}
-              >
-                Entrar (teste)
+              <Button type="submit" className="w-full" disabled={isLoading}>
+                {isLoading ? (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    Entrando...
+                  </>
+                ) : (
+                  "Entrar"
+                )}
               </Button>
 
               <div className="text-center text-sm">
@@ -248,7 +257,8 @@ const Auth = () => {
                   id="register-password"
                   type="password"
                   placeholder="••••••"
-                  {...registerForm.register("password")}
+                    {...registerForm.register("password")}
+                    maxLength={72}
                   disabled={isLoading}
                 />
                 {registerForm.formState.errors.password && (

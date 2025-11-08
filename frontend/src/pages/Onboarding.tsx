@@ -1,5 +1,8 @@
 import { useState, useEffect } from "react";
+import { useLocation } from 'react-router-dom';
+import { buscarPerfil, salvarPerfil, submitOnboarding } from '@/api';
 import { useNavigate } from "react-router-dom";
+import { useApp } from '@/contexts/AppContext';
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
@@ -57,18 +60,101 @@ const Onboarding = () => {
   const [onboardingData, setOnboardingData] = useState<OnboardingData>({});
   const [goals, setGoals] = useState<Goal[]>([]);
   const [monthlyIncomeType, setMonthlyIncomeType] = useState<"value" | "range">("value");
+  type LocState = { edit?: boolean } | null;
+  const location = useLocation();
+  const state = (location.state as LocState) || null;
+  const isEdit = !!(state && state.edit === true);
+  const { setCurrentUser, refreshGoals, refreshTransactions } = useApp();
 
-  // Carregar dados salvos do localStorage
+  // Carregar dados: se for edição, buscar do servidor; se for novo onboarding, remover dados salvos para evitar vazamento entre contas
   useEffect(() => {
-    const savedData = localStorage.getItem("monevo_onboarding");
-    if (savedData) {
-      const parsed = JSON.parse(savedData);
-      setOnboardingData(parsed);
-      if (parsed.step3?.goals) {
-        setGoals(parsed.step3.goals);
-      }
-    }
-  }, []);
+    if (isEdit) {
+      (async () => {
+        try {
+          const profile = await buscarPerfil();
+          if (profile) {
+            // map backend profile -> onboarding shape
+            const mapped: OnboardingData = {};
+            mapped.step1 = {
+              name: profile.step1?.nome || profile.step1?.name || '',
+              email: profile.step1?.email || '',
+              password: '',
+              age: profile.step1?.idade ? String(profile.step1.idade) : '',
+              profession: profile.step1?.profissao || '',
+              cpf: profile.step1?.cpf || '',
+              maritalStatus: profile.step1?.estadoCivil || '',
+            } as z.infer<typeof step1Schema>;
+            if (profile.step2) {
+              mapped.step2 = {
+                currentBalance: profile.step2.saldoAtual || '',
+                monthlyIncomeType: profile.step2.tipoRendaMensal || 'value',
+                monthlyIncomeValue: profile.step2.valorRendaMensal || '',
+                monthlyIncomeRange: profile.step2.faixaRendaMensal || '',
+              } as z.infer<typeof step2Schema>;
+              setMonthlyIncomeType(profile.step2.tipoRendaMensal || 'value');
+            }
+            if (profile.step3) {
+              mapped.step3 = {
+                monthlyRevenue: profile.step3.rendaMensal || '',
+                monthlyExpense: profile.step3.despesaMensal || '',
+                monthlyInvestment: profile.step3.investimentoMensal || '',
+                goals: [] as Goal[],
+              } as z.infer<typeof step3Schema> & { goals: Goal[] };
+              if (profile.step3.metas && Array.isArray(profile.step3.metas)) {
+                const g: Goal[] = profile.step3.metas.map((m: unknown) => {
+                  const mm = m as Record<string, unknown>;
+                  return {
+                    name: String(mm['nome'] ?? ''),
+                    value: String(mm['valor'] ?? ''),
+                    months: mm['meses'] != null ? String(mm['meses']) : '',
+                  };
+                });
+                mapped.step3.goals = g;
+                setGoals(g);
+              }
+            }
+            if (profile.step4) mapped.step4 = profile.step4;
+
+            setOnboardingData(mapped);
+            // persist to localStorage so UI forms pick them as defaultValues
+            localStorage.setItem('monevo_onboarding', JSON.stringify(mapped));
+          }
+        } catch (e) {
+          console.warn('Erro ao buscar perfil para edição', e);
+        }
+      })();
+            return;
+          }
+
+          // Não está em modo edição: se houver um rascunho de registro (salvo na tela de Auth), use-o para preencher a Etapa 1
+          try {
+            const reg = localStorage.getItem('monevo_registration');
+            if (reg) {
+              const parsed = JSON.parse(reg);
+              const mapped: OnboardingData = {};
+              mapped.step1 = {
+                name: parsed.name || '',
+                email: parsed.email || '',
+                password: parsed.password || '',
+                age: '',
+                profession: '',
+                cpf: '',
+                maritalStatus: '',
+              } as z.infer<typeof step1Schema>;
+              setOnboardingData(mapped);
+              // persist so forms pick up defaults
+              localStorage.setItem('monevo_onboarding', JSON.stringify(mapped));
+              return;
+            }
+          } catch (e) {
+            console.warn('Falha ao ler rascunho de registro:', e);
+          }
+
+          // nenhuma informação de registro: remover dados locais antigos para evitar vazamento entre contas
+          localStorage.removeItem("monevo_onboarding");
+          setOnboardingData({});
+          setGoals([]);
+  }, [isEdit]);
 
   // Salvar no localStorage sempre que houver mudança
   useEffect(() => {
@@ -118,18 +204,99 @@ const Onboarding = () => {
     }
   };
 
-  const handleFinish = () => {
-    // Salvar dados finais
+  const handleFinish = async () => {
+    // Salvar dados finais localmente (backup) — também tentaremos persistir no servidor
     localStorage.setItem("monevo_onboarding_completed", "true");
     localStorage.setItem("monevo_user_data", JSON.stringify(onboardingData));
-    
+
+    try {
+      // build payload used by both create (POST /onboarding) and update (PUT /perfil)
+      const payload: Record<string, unknown> = {};
+      if (onboardingData.step1) {
+        payload.step1 = {
+          nome: onboardingData.step1.name,
+          email: onboardingData.step1.email,
+          senha: onboardingData.step1.password || undefined,
+          idade: onboardingData.step1.age ? Number(onboardingData.step1.age) : undefined,
+          profissao: onboardingData.step1.profession,
+          cpf: onboardingData.step1.cpf,
+          estadoCivil: onboardingData.step1.maritalStatus,
+        };
+      }
+      if (onboardingData.step2) {
+        payload.step2 = {
+          saldoAtual: onboardingData.step2.currentBalance,
+          tipoRendaMensal: onboardingData.step2.monthlyIncomeType,
+          valorRendaMensal: onboardingData.step2.monthlyIncomeValue,
+          faixaRendaMensal: onboardingData.step2.monthlyIncomeRange,
+        };
+      }
+      if (onboardingData.step3) {
+        payload.step3 = {
+          rendaMensal: onboardingData.step3.monthlyRevenue,
+          despesaMensal: onboardingData.step3.monthlyExpense,
+          investimentoMensal: onboardingData.step3.monthlyInvestment,
+          metas: (onboardingData.step3.goals || goals || []).map(g => ({ nome: g.name, valor: g.value, meses: g.months ? Number(g.months) : undefined }))
+        };
+      }
+      if (onboardingData.step4) payload.step4 = onboardingData.step4;
+
+      // Decide new vs edit using explicit isEdit flag so a logged-in user can still create a new account
+      if (isEdit) {
+        // existing user: update profile
+        try {
+          await salvarPerfil(payload);
+          toast.success('Perfil atualizado com sucesso');
+          // refresh context data
+          if (refreshGoals) await refreshGoals();
+          if (refreshTransactions) await refreshTransactions();
+        } catch (e) {
+          console.error('Falha ao atualizar perfil:', e);
+          toast.error('Falha ao salvar perfil no servidor');
+        }
+      } else {
+        // new user flow: create user + profile and get token back
+        try {
+          // Clear any existing session to avoid mixing accounts
+          try { localStorage.removeItem('token'); localStorage.removeItem('usuario'); } catch (err) { /* ignore */ }
+          if (setCurrentUser) setCurrentUser(null);
+
+          const res = await submitOnboarding(payload);
+          // expected: { token: '...', usuario: { id, nome, email, ... } }
+          if (res && res.token) {
+            localStorage.setItem('token', res.token);
+            if (res.usuario) localStorage.setItem('usuario', JSON.stringify(res.usuario));
+            // update AppContext currentUser
+            if (res.usuario && setCurrentUser) {
+              setCurrentUser({ id: res.usuario.id, nome: res.usuario.nome || res.usuario.name || '', email: res.usuario.email, data_criacao: res.usuario.data_criacao || null });
+            }
+            // refresh AppContext data so dashboard shows seeded items
+            if (refreshGoals) await refreshGoals();
+            if (refreshTransactions) await refreshTransactions();
+
+            // clear registration drafts now that account/session exists
+            try { localStorage.removeItem('monevo_registration'); } catch (e) { /* ignore */ }
+            try { localStorage.removeItem('monevo_onboarding'); } catch (e) { /* ignore */ }
+            toast.success('Perfil criado e sessão iniciada');
+          } else {
+            toast.error('Onboarding criado, mas resposta do servidor inesperada');
+          }
+        } catch (e) {
+          console.error('Falha ao submeter onboarding:', e);
+          toast.error('Falha ao criar usuário e salvar perfil');
+        }
+      }
+    } catch (e) {
+      console.warn('Erro ao tentar persistir perfil', e);
+    }
+
     toast.success("Bem-vindo ao Monevo! 🎉", {
       description: "Seu perfil foi configurado com sucesso.",
     });
-    
-  // Redirecionar para o dashboard (Index) e abrir a aba 'dashboard' via hash
-  // Use replace to avoid keeping the onboarding page in history
-  navigate("/index#dashboard", { replace: true });
+
+    // Redirecionar para o dashboard (Index) e abrir a aba 'dashboard' via hash
+    // Use replace to evitar mantendo a página de onboarding no histórico
+    navigate("/index#dashboard", { replace: true });
   };
 
   const addGoal = () => {
@@ -148,20 +315,32 @@ const Onboarding = () => {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-primary-50 to-primary-100 flex items-center justify-center p-4">
-      <Card className="w-full max-w-2xl shadow-xl">
+      <Card className="w-full max-w-2xl shadow-xl relative">
+        {isEdit && (
+            <Button 
+              variant="ghost" 
+              size="sm"
+              className="absolute top-4 right-4 text-muted-foreground"
+              onClick={() => navigate('/index#dashboard')}
+            >
+              Voltar ao Dashboard
+            </Button>
+        )}
         <CardHeader className="space-y-4">
           <div className="flex items-center justify-between">
             <CardTitle className="text-2xl font-bold text-monevo-blue">
-              Bem-vindo ao Monevo
+              {isEdit ? 'Editar Perfil' : 'Bem-vindo ao Monevo'}
             </CardTitle>
-            <span className="text-sm text-muted-foreground">
-              Etapa {currentStep} de 4
-            </span>
+            {!isEdit && (
+              <span className="text-sm text-muted-foreground">
+                Etapa {currentStep} de 4
+              </span>
+            )}
           </div>
           <CardDescription>
-            Configure sua experiência financeira personalizada
+            {isEdit ? 'Altere suas informações pessoais e financeiras.' : 'Configure sua experiência financeira personalizada'}
           </CardDescription>
-          <Progress value={progressPercentage} className="h-2" />
+          {!isEdit && <Progress value={progressPercentage} className="h-2" />}
         </CardHeader>
 
         <CardContent className="space-y-6">
@@ -248,6 +427,7 @@ const Step1 = ({
     handleSubmit,
     setValue,
     watch,
+    reset,
     formState: { errors },
   } = useForm<z.infer<typeof step1Schema>>({
     resolver: zodResolver(step1Schema),
@@ -261,6 +441,10 @@ const Step1 = ({
       setValue("cpf", formatCPF(cpfValue));
     }
   }, [cpfValue, setValue, formatCPF]);
+
+  useEffect(() => {
+    if (data) reset(data);
+  }, [data, reset]);
 
   return (
     <form onSubmit={handleSubmit(onSave)} className="space-y-4">
@@ -369,11 +553,16 @@ const Step2 = ({
     handleSubmit,
     setValue,
     watch,
+    reset,
     formState: { errors },
   } = useForm<z.infer<typeof step2Schema>>({
     resolver: zodResolver(step2Schema),
     defaultValues: data || { monthlyIncomeType: "value" },
   });
+
+  useEffect(() => {
+    if (data) reset(data);
+  }, [data, reset]);
 
   const balanceValue = watch("currentBalance");
 
@@ -495,11 +684,16 @@ const Step3 = ({
     register,
     handleSubmit,
     setValue,
+    reset,
     formState: { errors },
   } = useForm<z.infer<typeof step3Schema>>({
     resolver: zodResolver(step3Schema),
     defaultValues: data,
   });
+
+  useEffect(() => {
+    if (data) reset(data);
+  }, [data, reset]);
 
   return (
     <form onSubmit={handleSubmit(onSave)} className="space-y-6">

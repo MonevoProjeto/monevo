@@ -1,5 +1,5 @@
-
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import React, { useState } from 'react';
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { 
@@ -9,39 +9,40 @@ import {
   LogOut, 
   ChevronRight,
   Mail,
-  Phone
+  
 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
+import { useApp } from "@/contexts/AppContext";
 
 const Profile = () => {
+  const { currentUser, logout } = useApp();
   const user = {
-    name: "João Silva",
-    email: "joao.silva@email.com",
-    phone: "(11) 99999-9999",
-    memberSince: "Janeiro 2024",
-    avatar: ""
+    name: currentUser?.nome ?? 'Usuário',
+    email: currentUser?.email ?? '—',
+    phone: '',
+    memberSince: currentUser?.data_criacao ? new Date(currentUser.data_criacao).toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' }) : '—',
+    avatar: ''
   };
 
   const navigate = useNavigate();
+  const [showHelp, setShowHelp] = useState(false);
+
+  const handleEditProfile = () => {
+    navigate('/onboarding', { state: { edit: true } });
+  };
 
   const menuItems = [
     {
       icon: User,
       title: "Editar Perfil",
       description: "Altere suas informações pessoais",
-      action: () => console.log("Editar perfil")
-    },
-    {
-      icon: Shield,
-      title: "Segurança",
-      description: "Senha e configurações de segurança",
-      action: () => console.log("Segurança")
+      action: handleEditProfile
     },
     {
       icon: HelpCircle,
       title: "Ajuda e Suporte",
       description: "Precisa de ajuda? Estamos aqui",
-      action: () => console.log("Ajuda")
+      action: () => setShowHelp(true)
     }
   ];
 
@@ -56,13 +57,12 @@ const Profile = () => {
           <Avatar className="h-16 w-16 border-2 border-white/20">
             <AvatarImage src={user.avatar} alt={user.name} />
             <AvatarFallback className="bg-white/20 text-white text-lg font-bold">
-              {user.name.split(' ').map(n => n[0]).join('')}
+              {user.name ? user.name.split(' ')[0].charAt(0).toUpperCase() : 'U'}
             </AvatarFallback>
           </Avatar>
           
           <div>
             <h2 className="text-xl font-bold">{user.name}</h2>
-            <p className="text-blue-100 text-sm">Membro desde {user.memberSince}</p>
           </div>
         </div>
       </div>
@@ -81,13 +81,7 @@ const Profile = () => {
             </div>
           </div>
           
-          <div className="flex items-center gap-3 p-3 bg-gray-50 rounded-lg">
-            <Phone className="h-5 w-5 text-monevo-blue" />
-            <div>
-              <p className="text-sm text-gray-500">Telefone</p>
-              <p className="font-medium text-gray-900">{user.phone}</p>
-            </div>
-          </div>
+          {/* Phone removed by request */}
         </CardContent>
       </Card>
 
@@ -121,6 +115,44 @@ const Profile = () => {
         </CardContent>
       </Card>
 
+      {/* Help / FAQ panel (rendered when user opens Ajuda e Suporte) */}
+      {showHelp && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-monevo-blue">Ajuda e Suporte — FAQ</CardTitle>
+            <CardDescription>Perguntas frequentes e informações de contato</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="space-y-3">
+              <details className="p-3 bg-gray-50 rounded">
+                <summary className="font-medium">Como criar uma meta?</summary>
+                <p className="text-sm text-gray-600 mt-2">Vá para a aba Metas e clique em "Adicionar Meta". Preencha título, objetivo e prazo, e salve.</p>
+              </details>
+
+              <details className="p-3 bg-gray-50 rounded">
+                <summary className="font-medium">Como editar meu perfil?</summary>
+                <p className="text-sm text-gray-600 mt-2">Acesse Perfil → Editar Perfil e atualize suas informações. Lembre-se de salvar no final do onboarding.</p>
+              </details>
+
+              <details className="p-3 bg-gray-50 rounded">
+                <summary className="font-medium">Minhas transações somem após logout — o que fazer?</summary>
+                <p className="text-sm text-gray-600 mt-2">As transações são salvas vinculadas ao seu usuário. Verifique se você está logado com o mesmo email e se o token não expirou. Se necessário, entre em contato com suporte.</p>
+              </details>
+            </div>
+
+            <div className="p-4 bg-gray-100 rounded">
+              <p className="font-medium">Contato</p>
+              <p className="text-sm text-gray-600 mt-2">Para dúvidas, envie um email para:</p>
+              <p className="mt-2 font-mono text-sm text-monevo-blue">suporte@monevo.example</p>
+            </div>
+
+            <div className="flex justify-end">
+              <Button variant="ghost" onClick={() => setShowHelp(false)}>Fechar</Button>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
       {/* App Info */}
       <Card>
         <CardContent className="p-4">
@@ -138,7 +170,7 @@ const Profile = () => {
       <Button 
         variant="outline" 
         className="w-full border-red-200 text-red-600 hover:bg-red-50 hover:border-red-300 py-3"
-        onClick={() => { try { navigate('/auth', { replace: true }); } catch (e) { console.warn('logout nav failed', e); } }}
+        onClick={() => { try { logout(); } catch (e) { console.warn('logout failed', e); } }}
       >
         <LogOut className="h-5 w-5 mr-2" />
         Sair do Aplicativo

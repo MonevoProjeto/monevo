@@ -1,7 +1,7 @@
 
 /* eslint-disable react-refresh/only-export-components */
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
-import { listarMetas, criarMeta as criarMetaAPI, atualizarMeta as atualizarMetaAPI, deletarMeta as deletarMetaAPI } from '../api';
+import { listarMetas, criarMeta as criarMetaAPI, atualizarMeta as atualizarMetaAPI, deletarMeta as deletarMetaAPI, listarTransacoes, criarTransacao as criarTransacaoAPI } from '../api';
 import { toast } from 'sonner';
 
 
@@ -52,6 +52,12 @@ interface AppContextType {
   loading: boolean;
   error: string | null;
   transactions: Transaction[];
+  currentUser?: {
+    id: number;
+    nome: string;
+    email: string;
+    data_criacao?: string | null;
+  } | null;
   addGoal: (goal: Omit<Goal, 'id'>) => Promise<void>;
   updateGoal: (goalId: string, goal: Partial<Goal>) => Promise<void>;
   deleteGoal: (goalId: string) => Promise<void>;
@@ -60,6 +66,8 @@ interface AppContextType {
   refreshGoals: () => Promise<void>;
   activatedPlans: ActivatedPlan[];
   activatePlan: (planId: string, planTitle: string) => void;
+  setCurrentUser: (u: AppContextType['currentUser'] | null) => void;
+  logout: () => void;
 }
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
@@ -82,6 +90,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [activatedPlans, setActivatedPlans] = useState<ActivatedPlan[]>([]);
+  const [currentUser, setCurrentUser] = useState<AppContextType['currentUser'] | null>(null);
 
   // Converter meta da API para formato do frontend
   const convertApiMetaToGoal = (apiMeta: ApiMeta): Goal => {
@@ -173,87 +182,76 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
   };
 
   const loadTransactions = async () => {
-  try {
-    const res = await fetch(
-      `${import.meta.env.VITE_API_URL ?? 'http://127.0.0.1:8000'}/transacoes`
-    );
-    if (!res.ok) throw new Error('API unavailable');
-    const data = await res.json();
-    type BackendTx = {
-      id?: number;
-      usuario_id?: number;
-      tipo?: string;
-      categoria?: string;
-      categoria_nome?: string;
-      descricao?: string;
-      valor?: number;
-      data?: string;
-    };
-    const converted: Transaction[] = (data || []).map((t: BackendTx) => ({
-      id: String(t.id ?? t.usuario_id ?? Date.now()),
-      type:
-        t.tipo === 'receita'
-          ? 'income'
-          : t.tipo === 'despesa'
-          ? 'expense'
-          : 'investment',
-      category: t.categoria || t.categoria_nome || '',
-      description: t.descricao || '',
-      amount: Number(t.valor ?? 0),
-      date: t.data || new Date().toISOString(),
-    }));
-    setTransactions(converted);
-  } catch (err) {
-    console.warn('Could not load transactions from API', err);
-  }
-};
+    try {
+      const data = await listarTransacoes();
+      type BackendTx = {
+        id?: number;
+        usuario_id?: number;
+        tipo?: string;
+        categoria?: string;
+        categoria_nome?: string;
+        descricao?: string;
+        valor?: number;
+        data?: string;
+      };
+      const converted: Transaction[] = (data || []).map((t: BackendTx) => ({
+        id: String(t.id ?? Date.now()),
+        type:
+          t.tipo === 'receita'
+            ? 'income'
+            : t.tipo === 'despesa'
+            ? 'expense'
+            : 'investment',
+        category: t.categoria || t.categoria_nome || '',
+        description: t.descricao || '',
+        amount: Number(t.valor ?? 0),
+        date: t.data || new Date().toISOString(),
+      }));
+      setTransactions(converted);
+    } catch (err) {
+      console.warn('Could not load transactions from API', err);
+      setTransactions([]);
+    }
+  };
 
 const addTransaction = async (tx: Omit<Transaction, 'id'>) => {
   const tempId = String(Date.now());
   const newTx: Transaction = { id: tempId, ...tx };
+  // optimistic update
   setTransactions((prev) => [newTx, ...prev]);
 
   try {
-    const res = await fetch(
-      `${import.meta.env.VITE_API_URL ?? 'http://127.0.0.1:8000'}/transacoes`,
-      {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          usuario_id: Number(import.meta.env.VITE_DEFAULT_USER_ID ?? 1),
-          data: tx.date,
-          valor: tx.amount,
-          tipo:
-            tx.type === 'income'
-              ? 'receita'
-              : tx.type === 'expense'
-              ? 'despesa'
-              : 'investimento',
-          descricao: tx.description,
-          categoria: tx.category,
-        }),
-      }
-    );
+    const payload = {
+      data: tx.date,
+      valor: tx.amount,
+      tipo: tx.type === 'income' ? 'receita' : tx.type === 'expense' ? 'despesa' : 'investimento',
+      descricao: tx.description,
+      categoria: tx.category,
+    };
 
-    if (res.ok) {
-      const created = await res.json();
-      setTransactions((prev) =>
-        prev.map((t) =>
-          t.id === tempId
-            ? {
-                id: String(created.id ?? tempId),
-                type: tx.type,
-                category: tx.category,
-                description: tx.description,
-                amount: tx.amount,
-                date: tx.date,
-              }
-            : t
-        )
-      );
-    }
+    const created = await criarTransacaoAPI(payload);
+
+    // replace temp item with server item
+    setTransactions((prev) =>
+      prev.map((t) =>
+        t.id === tempId
+          ? {
+              id: String(created.id ?? tempId),
+              type: tx.type,
+              category: tx.category,
+              description: tx.description,
+              amount: tx.amount,
+              date: tx.date,
+            }
+          : t
+      )
+    );
   } catch (e) {
     console.warn('Failed to post transaction to API', e);
+    // rollback optimistic update
+    setTransactions((prev) => prev.filter((t) => t.id !== tempId));
+    toast.error('Não foi possível salvar a transação. Verifique sua conexão e tente novamente.');
+    throw e;
   }
 };
 
@@ -271,6 +269,32 @@ const refreshTransactions = async () => {
   useEffect(() => {
     loadGoals();
     loadTransactions();
+    // carregar usuário do localStorage, se houver
+    try {
+      const stored = localStorage.getItem('usuario');
+      if (stored) {
+        const parsed = JSON.parse(stored);
+        // backend usa 'nome' e 'email'
+        setCurrentUser({ id: parsed.id, nome: parsed.nome || parsed.name || '', email: parsed.email, data_criacao: parsed.data_criacao || null });
+      } else if (localStorage.getItem('token')) {
+        // tentar buscar /auth/me para popular dados atualizados
+        (async () => {
+          try {
+            const token = localStorage.getItem('token');
+            const base = import.meta.env.VITE_API_URL ?? 'http://127.0.0.1:8000';
+            const resp = await fetch(`${base}/auth/me`, { headers: { Authorization: `Bearer ${token}` } });
+            if (resp.ok) {
+              const u = await resp.json();
+              setCurrentUser({ id: u.id, nome: u.nome || u.name || '', email: u.email, data_criacao: u.data_criacao || null });
+            }
+          } catch (e) {
+            console.warn('Failed to fetch /auth/me', e);
+          }
+        })();
+      }
+    } catch (e) {
+      console.warn('Failed to parse stored usuario', e);
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -280,6 +304,7 @@ const refreshTransactions = async () => {
       loading,
       error,
       transactions,
+      currentUser,
       addGoal,
       updateGoal,
       deleteGoal,
@@ -288,6 +313,27 @@ const refreshTransactions = async () => {
       refreshTransactions,
       activatedPlans,
       activatePlan,
+      setCurrentUser,
+      logout: () => {
+        // limpar token/usuario e estado
+        try {
+          localStorage.removeItem('token');
+          localStorage.removeItem('usuario');
+        } catch (e) {
+          console.warn('Failed to clear localStorage on logout', e);
+        }
+        setCurrentUser(null);
+        // Replace history entry and navigate to login in a way that prevents
+        // the browser back button from restoring an authenticated view.
+        try {
+          // replace current history entry and navigate to auth/login page
+          // use '/auth' which is the app's auth route
+          window.location.replace('/auth');
+        } catch (e) {
+          // fallback: soft navigate (router-level) if running in test env
+          console.warn('window.location.replace failed during logout', e);
+        }
+      }
     }}>
       {children}
     </AppContext.Provider>

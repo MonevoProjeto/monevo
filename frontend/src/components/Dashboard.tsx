@@ -44,7 +44,7 @@ interface DashboardProps {
 }
 
 const Dashboard = ({ onNavigate, onSetTransactionsFilter }: DashboardProps) => {
-  const { transactions, goals } = useApp();
+  const { transactions, goals, currentUser } = useApp();
 
   const income = useMemo(() => transactions
     .filter(t => t.type === 'income')
@@ -189,7 +189,7 @@ const Dashboard = ({ onNavigate, onSetTransactionsFilter }: DashboardProps) => {
           <CardContent className="p-4 sm:p-6">
             <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between mb-6 gap-3">
               <div>
-                <h1 className="text-2xl font-bold mb-1">Olá, João!</h1>
+                <h1 className="text-2xl font-bold mb-1">Olá, {currentUser?.nome ?? 'amigo'}!</h1>
                 <p className="text-blue-100">Bem-vindo ao Monevo</p>
               </div>
               <div className="relative lg:hidden">
