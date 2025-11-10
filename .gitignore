@@ -132,3 +132,10 @@ dist
 .yarn/build-state.yml
 .yarn/install-state.gz
 .pnp.*
+
+local.settings.json
+__pycache__/
+*.pyc
+.venv/
+.python_packages/
+.vscode/
