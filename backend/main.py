@@ -10,7 +10,8 @@ from datetime import datetime, date
 from contextlib import asynccontextmanager
 import os, logging
 
-
+#importando os schemas pydantic de entrada/saída
+#validam request e formatam a response
 from models import (
     Meta, MetaCreate, MetaUpdate,
     CategoriaRead, CategoriaCreate, CategoriaUpdate,
@@ -22,20 +23,25 @@ from models import (
     OnboardingCreate, OnboardingRead, OnboardingUpdate
 )
 
+#importando as entidades e tabelas
+#get_db --> sessão por requisição
+#sqlaclhemy 
+
 from database import (
     get_db, create_tables, populate_initial_data,
     Conta, Recorrencia, Categoria, Transacao, MetaTable, UsuarioTable,
     OnboardingProfileTable, OnboardingGoalTable,
 )
 
+#autenticação 
+#rotas de login/registro 
+#usa token JWT 
 from auth import pegar_usuario_atual, criar_hash_senha, criar_token
 from auth_routes import router as auth_router
 
-
+#normalizando valores monetarios que vierem do front 
+#trata se vier no formato "americano" ou "brasileiro"
 def _parse_currency(value):
-    """Tenta converter valores de moeda locais (ex: 'R$ 5.000,00' ou '5000.00') para float.
-    Retorna None se não for possível converter.
-    """
     if value is None:
         return None
     try:
@@ -59,16 +65,19 @@ def _parse_currency(value):
     except Exception:
         return None
 
-
+#LOG --> historico de mensagens que a aplicação escreve quando roda 
+#lifespan --> ciclo de vida da aplicação (cuida de startup/shutdown) --> roda codigo na inicialização e finalização da app
+#ajusta comportamento --> não popular dados iniciais em produção 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("app")
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     try:
+        #STARTUP: roda ates do app aceitar requisições
         logger.info("Lifespan: startup")
         create_tables()
-        populate_initial_data()
+        populate_initial_data() #so faz sentido localmente
         if os.getenv("WEBSITE_INSTANCE_ID"):
             logger.info("Azure App Service detectado")
         else:
@@ -79,10 +88,13 @@ async def lifespan(app: FastAPI):
         # raise  # se quiser falhar hard
     finally:
         logger.info("Lifespan: shutdown")
+        #SHUTDOWN: roda quando o app vai encerrar --> fecha conexões, limpa recursos, etc.
+
 
 app = FastAPI(title="Monevo API", version="1.0.0",lifespan=lifespan)
 
-
+#CORS: libera origens confiáveis (localhosts + dominios do azure)
+# necessário para usar o react, pois eles te dominios diferentes para conseguir chamar a API no navegador 
 # ajuste as origens conforme seu ambiente
 ALLOWED_ORIGINS = [
         "http://localhost:5173",   # se estiver usando Vite padrão
@@ -100,20 +112,23 @@ ALLOWED_ORIGINS = [
 
 app.add_middleware(
     CORSMiddleware,
-    # Keep explicit allowed origins and also accept Azure Static Apps subdomains
     allow_origins=ALLOWED_ORIGINS,
-    # Some hosting setups (Static Web Apps) create dynamic subdomains; this regex
-    # permits any subdomain under `azurestaticapps.net` AND allows any localhost
-    # origin with any port (convenient for local development). Adjust/remove or
-    # restrict to specific origins for production deployments.
+    # se forem criados subdominios dinamicos, esse regex libera automaticamente (qualquer subdominio do azure.net e do localhost)
     allow_origin_regex=r"^https:\/\/.*\\.azurestaticapps\.net$|^http:\/\/localhost(:[0-9]+)?$|^http:\/\/127\\.0\\.0\\.1(:[0-9]+)?$",
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_credentials=True, #permite envio de credenciais (cookies, autenticação (JWT precisa dele))
+    allow_methods=["*"], #permite todos os metodos HTTP (GET,POST, PUT, etc) 
+    #(libera uso de todas as ações REST da API)
+    allow_headers=["*"], #permite todos os cabeçalhos HTTP (necessáiro pro JWT)
 )
+#roda em qualquer porta local e o navegador vai ter comunicação com o back 
 
+
+# importa e liga as rotas de autenticação ao app principal 
 app.include_router(auth_router)
 
+#criado para rodar dados ao iniciar a aplicação 
+#popular tabelas para teste 
+#NAO USAMOS MAIS 
 """ @app.on_event("startup")
 def on_startup():
     #Inicializa as tabelas e (localmente) popula dados de exemplo."""
@@ -129,25 +144,42 @@ def on_startup():
 # next_id = 1 """
 
 
+# ponto de entrada da API 
+# rota de status/sistema  
 @app.get("/")
 def root():
+    # verifica se existe variavel de ambiente do azure, se tiver roda no azure, se não, roda local
     ambiente = "Azure" if os.getenv("WEBSITE_INSTANCE_ID") else "Local"
+    #checa o banco usado se for no azure ou local
     banco = "SQL Server" if not os.getenv("DATABASE_URL", "").startswith("sqlite") else "SQLite"
+    #devolve o json com as infos corretas 
     return {"message": "Monevo API - Gestão de Metas Financeiras", "ambiente": ambiente, "banco": banco}
 
 
+#METAS --------------------------------
+#listar metas 
+#retorna somente as metas pertencentes ao usuário autenticado
+#usa depends e filtra por usuario_id --> evita vazamento de dados entre usuários
 
+#segurança multiusuário: lista apenas as metas do usuário logado
+#ordena por data de criação decrescente (mais recentes primeiro)
+
+#depends = injeção de dependencias 
+# podemos reaproveitar lógica em varias rotas 
+#antes de rodar, as dependencias são chamadas automaticamente e o valor retornado é injetado nos parametros (user_id e db)
 @app.get("/metas", response_model=List[Meta])
 def listar_metas(
-    user_id: int = Depends(pegar_usuario_atual), 
-    db: Session = Depends(get_db)
+    user_id: int = Depends(pegar_usuario_atual), #autentica o usuario via token
+    db: Session = Depends(get_db) #abre uma sesao com o banco e fecha automaticamente
 ):
     metas = db.query(MetaTable).filter(
         MetaTable.usuario_id == user_id
     ).order_by(MetaTable.data_criacao.desc()).all()
     return metas
 
-
+# criar meta 
+# validação de negocio: impede metas incoerentes 
+# força usuario do token a ser dono da meta criada
 @app.post("/metas", response_model=Meta, status_code=201)
 def criar_meta(
     meta: MetaCreate, 
@@ -157,7 +189,7 @@ def criar_meta(
     # Regra opcional: valor_atual não pode exceder o objetivo
     if meta.valor_atual > meta.valor_objetivo:
         raise HTTPException(status_code=422, detail="valor_atual não pode ser maior que valor_objetivo")
-
+# informações da nova meta a serem armazenadas
     nova = MetaTable(
         usuario_id=user_id,
         titulo=meta.titulo,
@@ -172,7 +204,9 @@ def criar_meta(
     db.refresh(nova)
     return nova
 
-
+#buscar uma meta especifica 
+#combina id + usuario_id no filtro --> usuário nao pode ver meta dos outros 
+# retorna 404 quando a meta não é do usuário 
 @app.get("/metas/{meta_id}", response_model=Meta)
 def buscar_meta(
     meta_id: int, 
@@ -188,6 +222,7 @@ def buscar_meta(
         raise HTTPException(status_code=404, detail="Meta não encontrada")
     return m
 
+# atualizar meta PARCIALMENTE 
 
 @app.patch("/metas/{meta_id}", response_model=Meta)
 def atualizar_meta(
@@ -204,8 +239,9 @@ def atualizar_meta(
     if not m:
         raise HTTPException(status_code=404, detail="Meta não encontrada")
 
-    data = payload.dict(exclude_unset=True)
-
+    data = payload.dict(exclude_unset=True) #só atualiza os campos enviados, mantendo os outros 
+ 
+    # revalida a consistencia considerando valores antigos e novos 
     # Regra: valor_atual não pode exceder valor_objetivo (considera valores novos ou atuais)
     novo_valor_atual = data.get("valor_atual", m.valor_atual)
     novo_valor_objetivo = data.get("valor_objetivo", m.valor_objetivo)
@@ -224,7 +260,44 @@ def atualizar_meta(
     db.refresh(m)
     return m
 
+"""
+poderiamos ter criado um UPDATE (atualiza tudo)
+reenvia todos os campos e tudo antigo é desconsiderado 
 
+@app.put("/metas/{meta_id}", response_model=Meta)
+def substituir_meta(
+    meta_id: int,
+    payload: MetaCreate,  # <- modelo completo
+    user_id: int = Depends(pegar_usuario_atual),
+    db: Session = Depends(get_db)
+):
+    # 1) garantir que a meta existe e pertence ao usuário
+    m = db.query(MetaTable).filter(
+        MetaTable.id == meta_id,
+        MetaTable.usuario_id == user_id
+    ).first()
+    if not m:
+        raise HTTPException(status_code=404, detail="Meta não encontrada")
+
+    # 2) regra de negócio: coerência
+    if payload.valor_atual is not None and payload.valor_objetivo is not None:
+        if payload.valor_atual > payload.valor_objetivo:
+            raise HTTPException(status_code=422, detail="valor_atual não pode ser maior que valor_objetivo")
+
+    # 3) substituir TODOS os campos (semântica de PUT)
+    m.titulo = payload.titulo
+    m.descricao = payload.descricao
+    m.categoria = payload.categoria
+    m.valor_objetivo = payload.valor_objetivo
+    m.valor_atual = payload.valor_atual
+    m.prazo = payload.prazo
+
+    db.add(m)
+    db.commit()
+    db.refresh(m)
+    return m
+"""
+# APAGAR meta 
 @app.delete("/metas/{meta_id}", status_code=204)
 def deletar_meta(
     meta_id: int, 
@@ -242,7 +315,10 @@ def deletar_meta(
     db.commit()
     return {}
 
+#retorna 204 No Content se deleta com sucesso 
+# 404 se não existir ou for de outro usuario 
 
+# CATEGORIAS ------------------------------------------
 
 @app.get("/categorias/{categoria_id}", response_model=CategoriaRead)
 def buscar_categoria(categoria_id: int, db: Session = Depends(get_db)):
@@ -251,7 +327,7 @@ def buscar_categoria(categoria_id: int, db: Session = Depends(get_db)):
         raise HTTPException(status_code=404, detail="Categoria não encontrada")
     return c
 
-
+# chave unica (validada em app e db)
 @app.post("/categorias", response_model=CategoriaRead, status_code=201)
 def criar_categoria(payload: CategoriaCreate, db: Session = Depends(get_db)):
     exists = db.query(Categoria).filter(Categoria.chave == payload.chave).first()
@@ -269,7 +345,7 @@ def criar_categoria(payload: CategoriaCreate, db: Session = Depends(get_db)):
     db.refresh(c)
     return c
 
-
+# atualiza parcial com exclude_unset
 @app.patch("/categorias/{categoria_id}", response_model=CategoriaRead)
 def atualizar_categoria(categoria_id: int, payload: CategoriaUpdate, db: Session = Depends(get_db)):
     c = db.query(Categoria).filter(Categoria.id == categoria_id).first()
@@ -283,7 +359,6 @@ def atualizar_categoria(categoria_id: int, payload: CategoriaUpdate, db: Session
     db.refresh(c)
     return c
 
-
 @app.delete("/categorias/{categoria_id}", status_code=204)
 def deletar_categoria(categoria_id: int, db: Session = Depends(get_db)):
     c = db.query(Categoria).filter(Categoria.id == categoria_id).first()
@@ -292,6 +367,10 @@ def deletar_categoria(categoria_id: int, db: Session = Depends(get_db)):
     db.delete(c)
     db.commit()
     return {}
+
+#possiveis ajustes:
+# poderia restringir a rota de admin (so admin pode deletar categorias)
+# admin_id: int = Depends(exigir_admin)  # ou verificar papel no token
 
 
 # -------------------------
@@ -443,7 +522,7 @@ def deletar_recorrencia(rec_id: int, user_id: int = Depends(pegar_usuario_atual)
     db.commit()
     return {}
 
-
+ 
 # -------------------------
 # Transações (CRUD + filtros + lógica de meta)
 # -------------------------
@@ -676,22 +755,30 @@ def gerar_fatura(
 @app.post("/usuarios/", response_model=Usuario, status_code=201)
 def criar_usuario(usuario: UsuarioCreate, db: Session = Depends(get_db)):
     """Cria um novo usuário com senha criptografada"""
+    # verifica se email já existe (se existe, leva erro 400)
+    # evita duplicação de emails 
     existente = db.query(UsuarioTable).filter(UsuarioTable.email == usuario.email).first()
     if existente:
         raise HTTPException(status_code=400, detail="E-mail já cadastrado")
 
+    # senha é transformada em hash antes de salvar
     senha_hash = criar_hash_senha(usuario.senha)
 
+    # cria novo usuario 
     novo_usuario = UsuarioTable(
         nome=usuario.nome,
         email=usuario.email,
         senha_hash=senha_hash,
     )
-    db.add(novo_usuario)
-    db.commit()
-    db.refresh(novo_usuario)
-    return novo_usuario
+    db.add(novo_usuario) #adiciona objeto na sessao
+    db.commit() # grava no banco
+    db.refresh(novo_usuario) #atualiza o objeto em memoria
+    return novo_usuario 
 
+# melhoras futuras: deixas apenas admins com essa funcionalidade 
+# admin_id: int = Depends(exigir_admin)
+# essas rotas são apenas para teste e administração
+# a criação de usuario mesmo esta no auth_routes.py 
 
 @app.get("/usuarios/", response_model=List[Usuario])
 def listar_usuarios(db: Session = Depends(get_db)):
@@ -699,14 +786,15 @@ def listar_usuarios(db: Session = Depends(get_db)):
     usuarios = db.query(UsuarioTable).all()
     return usuarios
 
+ 
 
 @app.post("/onboarding", response_model=LoginResponse, status_code=201)
 def submit_onboarding(payload: OnboardingCreate, db: Session = Depends(get_db)):
     """Recebe todos os passos do onboarding, cria usuário, perfil e metas.
-
     Retorna token e dados do usuário (mesma forma do /auth/login).
     """
     # step1 com dados mínimos é obrigatório
+    # sem nome/email/senha não prossegue
     step1 = payload.step1
     if not step1:
         raise HTTPException(status_code=422, detail="step1 é obrigatório com nome/email/senha")
@@ -748,6 +836,7 @@ def submit_onboarding(payload: OnboardingCreate, db: Session = Depends(get_db)):
     db.refresh(profile)
 
     # Criar metas/objetivos
+    # reexibem o onboarding (não são as metas reais do usuário)
     if payload.step3 and payload.step3.metas:
         for g in payload.step3.metas:
             goal = OnboardingGoalTable(
@@ -759,7 +848,6 @@ def submit_onboarding(payload: OnboardingCreate, db: Session = Depends(get_db)):
             db.add(goal)
         db.commit()
 
-    # === Seed real MetaTable entries and initial Transacao entries from step3 ===
     # Criar metas reais na MetaTable ligadas ao novo usuário (não apenas ao onboarding)
     metas_to_create = []
     transacoes_to_create = []
@@ -829,10 +917,15 @@ def submit_onboarding(payload: OnboardingCreate, db: Session = Depends(get_db)):
         logger.exception('Falha ao criar metas/transacoes iniciais do onboarding')
 
     # Gerar token e retornar resposta compatível com /auth/login
+    # front pode logar automaticamente após onboarding
     token = criar_token(novo_usuario.id)
     return {"token": token, "usuario": Usuario.from_orm(novo_usuario)}
 
-
+# traz o estado do onboardin e as metas cadastradas
+# busca usuarioTable + OnboardingProfileTable do usuario_id
+# carrega as metas do OnboardingGoalTable para exibir no front 
+# monta dicionarios dos passos 
+# retorna um array das metas para o front preencher o forms 
 @app.get("/perfil", response_model=OnboardingRead)
 def obter_perfil(user_id: int = Depends(pegar_usuario_atual), db: Session = Depends(get_db)):
     """Retorna o perfil de onboarding do usuário autenticado (se existir)."""
@@ -884,7 +977,7 @@ def obter_perfil(user_id: int = Depends(pegar_usuario_atual), db: Session = Depe
 
     return {"step1": step1, "step2": step2, "step3": step3, "step4": step4, "metas": metas}
 
-
+# permite que o usuario edite o onboarding e sincronixa isso no app 
 @app.put("/perfil", response_model=OnboardingRead)
 def atualizar_perfil(payload: OnboardingUpdate, user_id: int = Depends(pegar_usuario_atual), db: Session = Depends(get_db)):
     """Atualiza (ou cria) o perfil de onboarding para o usuário autenticado.
@@ -893,6 +986,7 @@ def atualizar_perfil(payload: OnboardingUpdate, user_id: int = Depends(pegar_usu
     Se forem enviadas metas em `step3.metas`, as metas existentes serão substituídas.
     """
     import json
+    # garante que o usuario existe
 
     usuario = db.query(UsuarioTable).filter(UsuarioTable.id == user_id).first()
     if not usuario:
@@ -960,11 +1054,10 @@ def atualizar_perfil(payload: OnboardingUpdate, user_id: int = Depends(pegar_usu
             for g in s3.metas:
                 goal = OnboardingGoalTable(onboarding_id=profile.id, nome=g.nome, valor=g.valor, meses=(g.meses or None))
                 db.add(goal)
-
-            # synchronize the real MetaTable in a non-destructive way:
-            # for each meta sent in step3, try to find an existing meta with the same title
-            # (case-insensitive). if found, update objetivo/prazo (preserve valor_atual).
-            # if not found, create a new meta. this avoids deleting metas the user created later.
+                # - Sincroniza MetaTable de forma não destrutiva:
+                # * Busca por título (case-insensitive); se existe, atualiza objetivo/prazo preservando valor_atual;
+                # * Se não existe, cria nova MetaTable.
+            
             try:
                 for g in s3.metas:
                     nome = (getattr(g, 'nome', None) or '').strip()
@@ -1080,3 +1173,11 @@ if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=8000)
 
+"""
+ponto de entrada onde tudo começa a funcionar 
+cria a aplicação FastAPI (app = fastAPI)
+conecta o banco de dados 
+registra as rotas 
+configura segurança e permissões 
+inicializa o servidor 
+"""

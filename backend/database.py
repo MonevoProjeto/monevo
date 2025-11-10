@@ -50,9 +50,10 @@ from dotenv import load_dotenv
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker, declarative_base
 
+#carrega as variaveis do .env (util no local)
 load_dotenv()
 
-
+#evita parsing esquisito de URLs com caracteres especiais
 def _build_mssql_odbc_url_from_env() -> str:
     """Monta a URL mssql+pyodbc segura via odbc_connect usando variáveis DB_*."""
     server   = os.getenv("DB_SERVER", "monevo.database.windows.net")
@@ -77,7 +78,9 @@ def _build_mssql_odbc_url_from_env() -> str:
 
     return f"mssql+pyodbc:///?odbc_connect={urllib.parse.quote_plus(odbc)}"
 
-
+#verifica qual ambiente usar para rodar o bd 
+#local = SQLite simples 
+# produção (azure) = SQL server via pyodbc 
 def get_database_url() -> str:
     """Retorna URL do banco baseado no ambiente."""
     # Produção (Azure) — prefira odbc_connect para evitar parsing errors
@@ -116,6 +119,9 @@ print("Usando banco:", _mask_conn_string(DATABASE_URL))
 # -------------------------
 # Engine / Session / Base
 # -------------------------
+
+# ajustes finos por tipo de banco 
+#motor de conexao dos bancos 
 engine_kwargs = {}
 
 # SQLite precisa desse connect_args
@@ -136,8 +142,13 @@ else:
 
 engine = create_engine(DATABASE_URL, **engine_kwargs)
 
+
+# cada requisição abre uma sessão, faz queries/commits e fecha 
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 # === Schema alvo no Azure SQL ===
+# onde criar as tabelas 
+# SQLserver --> tabelas vivem dentro de um schema (dbo.metas) (estrutura que diz como os dados sao organizados)
+# SQLite --> não existe schema
 SCHEMA = os.getenv("DB_SCHEMA", "dbo")  # você pode mudar via App Settings se quiser
 
 # Use um MetaData com schema apenas quando não estivermos em SQLite.
@@ -145,7 +156,7 @@ SCHEMA = os.getenv("DB_SCHEMA", "dbo")  # você pode mudar via App Settings se q
 if DATABASE_URL.startswith("sqlite"):
     metadata = MetaData()  # sem schema em ambientes SQLite locais
 else:
-    metadata = MetaData(schema=SCHEMA)
+    metadata = MetaData(schema=SCHEMA) #schema='dbo' no azure SQL
 
 Base = declarative_base(metadata=metadata)
 
@@ -161,6 +172,21 @@ Base = declarative_base(metadata=metadata)
 # -------------------------
 # Modelos (UMA ÚNICA Base)
 # -------------------------
+"""
+cada class Nome(Base):
+- tabela do banco (ORM - objetos relacionais mapeados)
+    - __tablename__ → nome da tabela no banco
+    - Column(...) → define cada coluna (tipo, se é obrigatória, se é chave primária, etc.)
+    - relationship(...) → cria um vínculo entre tabelas (relacionamentos ORM)
+
+
+UsuarioTable (1)───< (N) MetaTable
+           │
+           ├───< (N) Conta ───< (N) Transacao >───(1) Categoria
+           │                                └───(1) MetaTable
+           └───< (N) Recorrencia
+"""
+
 class MetaTable(Base):
     __tablename__ = "metas"
     id = Column(Integer, primary_key=True, index=True)
@@ -565,3 +591,12 @@ def populate_initial_data():
         print(f"Erro ao popular dados: {e}")
     finally:
         db.close()
+
+"""
+Este módulo configura a conexão de banco (SQLite local ou Azure SQL via pyodbc), 
+define o ORM com SQLAlchemy (engine, SessionLocal, Base com schema para SQL Server), 
+declara todas as tabelas do domínio (usuários, metas, contas, categorias, transações, recorrências e onboarding), 
+e expõe helpers para criar o schema (create_tables), abrir/fechar sessão por request (get_db) e popular dados de exemplo em dev (populate_initial_data). 
+Há ajustes de pool/reconexão para nuvem, mascaramento de credenciais nos logs e compatibilidade SQLite/SQL Server (schema e connect args).
+ Para produção, recomenda-se Alembic para migrações e DECIMAL para valores financeiros.
+"""

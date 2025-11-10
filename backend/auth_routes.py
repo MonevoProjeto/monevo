@@ -4,6 +4,12 @@ from database import get_db, UsuarioTable
 from models import UsuarioCreate, UsuarioLogin, LoginResponse, Usuario
 from auth import criar_hash_senha, verificar_senha, criar_token, pegar_usuario_atual
 
+
+# publica as rotas de registro, login e perfil; usa bcrypt para proteger senhas, 
+# JWT para autenticar requisição e depends para garantir que só quem tem token valido acesse as rotas 
+
+# HTTP Bearer + Depends: o FastAPI usa HTTPBearer para pegar o token do header e Depends para “plugá-lo” nas rotas. 
+# Se o token é inválido/expirou, a rota nem roda.
 router = APIRouter(prefix="/auth", tags=["Autenticação"])
 
 

@@ -1,3 +1,7 @@
+# dicionario de entrada e saida da API
+# definimos os schemas pydantic 
+# valida JSON que chega (request), padroniza o que sai (response) 
+
 from pydantic import BaseModel, Field, ConfigDict, condecimal, validator,  EmailStr
 from datetime import date, datetime
 from typing import Optional, List
@@ -13,8 +17,21 @@ CATEGORIAS_METAS = [
     "Educação",
 ]
 
+"""
+representa a mesma entidade mas em momentos diferentes do ciclo de uso da API 
+
+MetaCreate --> quando o cliente envia dados para criar uma meta --> entrada (POST)
+MetaUpdate --> quando o cliente atualiza uma meta existente --> entrada (PATCH)
+Meta --> quando a API retorna dados ao cliente --> saída (GET)
+
+separar essas classes garante que o codigo seja mais limpo, seguro e escalavel 
+evita que o usuario envie campos indevidos (id, data_criacao) ao criar ou atualizar
+simplifica as rotas de CRUD 
+"""
+
 # Meta --> usado para retornar dados (contém id e data_criacao)
 # quando a API retorna dados ao cliente (saída da API)
+# quando envia uma meta para o front; contém campos que o banco preenche automaticamente (id, data_criacao)
 class Meta(BaseModel):
     id: Optional[int] = None #vai ser gerado automaticamente pelo banco de dados
     titulo: str
@@ -26,13 +43,15 @@ class Meta(BaseModel):
     data_criacao: Optional[datetime] = None #vai ser inserida automaticamente quando for criada
 
     class Config:
-        model_config = ConfigDict(from_attributes=True)
+        model_config = ConfigDict(from_attributes=True) # permite converter um objeto ORM direto para esse modelo 
 
 
 # MetaCreate --> criação de novas metas (sem id nem data_criacao)
 # quando o cliente inputa os dados para criar uma meta (POST)
+# valida os dados que o usuairo envia 
 class MetaCreate(BaseModel):
-    titulo: str = Field(..., min_length=3, max_length=120, description="Título da meta financeira")
+    #campos obrigatorios com regras de validação
+    titulo: str = Field(..., min_length=3, max_length=120, description="Título da meta financeira") 
     descricao: Optional[str] = Field(None, max_length=255, description="Descrição detalhada da meta")
     categoria: str = Field(..., description="Escolha uma das categorias do wireframe")
     valor_objetivo: float = Field(..., gt=0, le=1_000_000, description="Valor total que se deseja atingir")
@@ -40,6 +59,7 @@ class MetaCreate(BaseModel):
     prazo: Optional[date] = Field(None, description="Data limite para atingir a meta (opcional)")
 
 class MetaUpdate(BaseModel):
+    # todos os campos sao opicionais pois a mudança nao é necessaria 
     titulo: Optional[str] = Field(None, min_length=3, max_length=120)
     descricao: Optional[str] = Field(None, max_length=255)
     categoria: Optional[str] = None
@@ -376,3 +396,15 @@ class OnboardingUpdate(BaseModel):
     step2: Optional[OnboardingStep2] = None
     step3: Optional[OnboardingStep3] = None
     step4: Optional[dict] = None
+
+
+"""
+Cada entidade (ex.: Meta, Conta, Categoria, Transação, Usuário) tem 3 tipos de schema Pydantic:
+
+Tipo de schema	Função principal	                                            Usado em	                       Campos
+Base	        Define os campos comuns da entidade (tipo, nome, valor, etc.)	 Base para herança interna	 Pode ter validações ou Field()
+Create	        Dados que o usuário envia para criar um novo registro	         POST	                     Herda do Base (sem id)
+Read	        Dados que a API retorna (com id, data_criacao, caches, etc.)	 GET, POST (retorno)	     Inclui campos automáticos e orm_mode/from_attributes
+Update	        Dados que o usuário envia para atualizar um registro existente	 PATCH, PUT	                 Todos opcionais (Optional[...])
+
+"""
