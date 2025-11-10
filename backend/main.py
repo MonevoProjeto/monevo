@@ -961,31 +961,50 @@ def atualizar_perfil(payload: OnboardingUpdate, user_id: int = Depends(pegar_usu
                 goal = OnboardingGoalTable(onboarding_id=profile.id, nome=g.nome, valor=g.valor, meses=(g.meses or None))
                 db.add(goal)
 
-            # Also synchronize the real MetaTable: delete old metas for this user and recreate from step3.metas
+            # synchronize the real MetaTable in a non-destructive way:
+            # for each meta sent in step3, try to find an existing meta with the same title
+            # (case-insensitive). if found, update objetivo/prazo (preserve valor_atual).
+            # if not found, create a new meta. this avoids deleting metas the user created later.
             try:
-                db.query(MetaTable).filter(MetaTable.usuario_id == user_id).delete()
-                db.commit()
-                # recreate metas in MetaTable
                 for g in s3.metas:
+                    nome = (getattr(g, 'nome', None) or '').strip()
+                    if not nome:
+                        continue
                     try:
                         valor_obj = _parse_currency(getattr(g, 'valor', None))
                     except Exception:
                         valor_obj = None
-                    m = MetaTable(
-                        usuario_id=user_id,
-                        titulo=(getattr(g, 'nome', None) or 'Meta'),
-                        descricao=None,
-                        categoria=None,
-                        valor_objetivo=(valor_obj if valor_obj is not None else 0.0),
-                        valor_atual=0.0,
-                        prazo=(getattr(g, 'meses', None) or None)
-                    )
-                    db.add(m)
+                    meses = (getattr(g, 'meses', None) or None)
+
+                    existing_meta = db.query(MetaTable).filter(
+                        MetaTable.usuario_id == user_id,
+                        func.lower(MetaTable.titulo) == nome.lower()
+                    ).first()
+
+                    if existing_meta:
+                        # update objetivo and prazo but keep valor_atual
+                        if valor_obj is not None:
+                            existing_meta.valor_objetivo = float(valor_obj)
+                        if meses is not None:
+                            existing_meta.prazo = meses
+                        db.add(existing_meta)
+                    else:
+                        new_meta = MetaTable(
+                            usuario_id=user_id,
+                            titulo=nome,
+                            descricao=None,
+                            categoria=None,
+                            valor_objetivo=(valor_obj if valor_obj is not None else 0.0),
+                            valor_atual=0.0,
+                            prazo=meses
+                        )
+                        db.add(new_meta)
+
                 db.commit()
             except Exception:
                 logger.exception('Falha ao sincronizar MetaTable durante atualizar_perfil')
 
-            # Update or create onboarding renta/despesa transactions below after profile persisted
+            # update/create onboarding renda/despesa transactions below after profile persisted
 
     # Step4
     if getattr(payload, "step4", None) is not None:
