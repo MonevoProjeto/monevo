@@ -1,6 +1,10 @@
 // src/lib/api.js - API para comunicação com backend
 
+// servico generic de chamadas a API 
+// centraliza a base URL, injeta o token automaticamente nas requisições protegidas e padroniza o tratamento de respostas e erros
+
 // Base URL da API
+// usa a variavel de ambiente do azure criada (VITE_API_URL) ou localhost para desenvolvimento
 const BASE_URL = import.meta.env.VITE_API_URL ?? 'http://127.0.0.1:8000';
 console.log('[API] BASE_URL =', BASE_URL);
 export { BASE_URL };
@@ -10,22 +14,26 @@ export { BASE_URL };
  */
 const fetchComAuth = async (url, options = {}) => {
   // Pegar token do localStorage
+  // token que foi salvo pelo auth.js na hora do login
   const token = localStorage.getItem('token');
 
   // Adicionar token no header se existir
+  // cria um cabeçalho das requisições (dizendo que esta enviando um JSON)
   const headers = {
     'Content-Type': 'application/json',
     ...(options.headers || {}),
   };
-
+  //se existir um token, adiciona no header Authorization
   if (token) headers['Authorization'] = `Bearer ${token}`;
 
+  //faz uma requisição para o backend 
   const response = await fetch(`${BASE_URL}${url}`, {
     ...options,
     headers,
   });
 
   // Se retornar 401 (não autorizado), fazer logout automático
+  // limpa storage e redireciona para login; isso implementa segurança básica das rotas do front
   if (response.status === 401) {
     localStorage.removeItem('token');
     localStorage.removeItem('usuario');
@@ -42,6 +50,7 @@ const fetchComAuth = async (url, options = {}) => {
 
 
 // Helper para tratar respostas
+// padroniza a leitura da resposta (simplifica a leitura)
 async function handleResponse(res) {
   if (!res.ok) {
     const errorText = await res.text().catch(() => '');
@@ -50,8 +59,13 @@ async function handleResponse(res) {
   return res.json();
 }
 
- 
+ // aqui usamos o fetchComAuth para fazer chamadas autenticadas
+
+// ============ TRANSACOES ============
 // GET /transacoes - listar transacoes com query params simples
+// chama o backend em /transacoes
+// fetch ja adiciona o token
+// retorna as transações do usuario logado 
 export async function listarTransacoes(params = {}) {
   try {
     const qs = new URLSearchParams();
@@ -230,3 +244,29 @@ export const submitOnboarding = async (payload) => {
     throw err;
   }
 };
+
+/**
+ * camada HTTP do front
+ * conversa com o backend (FastAPI) usando um padrão consistente (headers JSON, bearer token, etc)
+ * 
+ * BASE_URL --> endereço do backend --> aparece no .env ou local 
+ * 
+ * fetchComAuth --> envia requisições com token automático --> aparece nas rotas protegidas 
+ * 
+ * handleResponse --> padroniza a leitura das respostas do backend --> aparece nas funções abaixo 
+ * 
+ * listarMetas, criarMeta, etc --> chamam as rotas reais do backend --> aparecem nas páginas do React (/metas, /transacoes)
+ */
+
+/** FLUXO 
+ * 
+ * Auth.js → salva token no localStorage
+        ↓
+  api.js → pega o token e coloca no header
+        ↓
+  Backend (FastAPI) → valida token com JWT
+        ↓
+  Se válido → retorna dados
+  Se inválido → 401 → logout automático
+ * 
+ */

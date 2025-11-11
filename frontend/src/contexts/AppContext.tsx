@@ -5,7 +5,16 @@ import { listarMetas, criarMeta as criarMetaAPI, atualizarMeta as atualizarMetaA
 import { toast } from 'sonner';
 
 
+/**
+ * cria um contexto react + provider 
+ * mantém estado global da aplicação (metas, transações, usuário, etc)
+ * expõe funções para o resto do app
+ */
+
+// criamos essas funções de conversões pois o front e o back tem jeitos diferentes de nomear/organizar campos
+
 // API meta shape
+// como a API enfia uma meta
 interface ApiMeta {
   id: number;
   titulo: string;
@@ -17,6 +26,7 @@ interface ApiMeta {
   data_criacao: string;
 }
 
+// como o frontend quer usar a transação
 export interface Transaction {
   id: string;
   type: 'income' | 'expense' | 'investment';
@@ -26,7 +36,7 @@ export interface Transaction {
   date: string; // ISO
 }
 
-
+//como o frontend quer usar a meta (campos como nomes bonitos, icones, cores, etc)
 export interface Goal {
   id: string;
   title: string;
@@ -74,6 +84,7 @@ const AppContext = createContext<AppContextType | undefined>(undefined);
 
 // Mapeamento de categorias para ícones e cores
 // Category defaults (frontend mapping)
+// aparencia: da icone e cores para cada categoria quando a meta chega da API 
 const categoryMapping: Record<string, { icon: string; color: string; bgColor: string; borderColor: string }> = {
   Viagem: { icon: 'Plane', color: 'text-blue-600', bgColor: 'bg-blue-50', borderColor: 'border-blue-200' },
   'Quitar Dívida': { icon: 'CreditCard', color: 'text-red-600', bgColor: 'bg-red-50', borderColor: 'border-red-200' },
@@ -93,6 +104,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
   const [currentUser, setCurrentUser] = useState<AppContextType['currentUser'] | null>(null);
 
   // Converter meta da API para formato do frontend
+  // API --> Goal (inclui icone, cores, etc)
   const convertApiMetaToGoal = (apiMeta: ApiMeta): Goal => {
     const categoryInfo = categoryMapping[apiMeta.categoria] || { icon: 'Target', color: 'text-gray-600', bgColor: 'bg-gray-50', borderColor: 'border-gray-200' };
     
@@ -110,7 +122,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
       borderColor: categoryInfo.borderColor,
     };
   };
-
+  // goal --> API (tira decoração e deixa o campo que o backend entende)
   const convertGoalToApiMeta = (goal: Omit<Goal, 'id'> | Partial<Goal>) => ({
     titulo: goal.title,
     descricao: goal.description || null,
@@ -345,3 +357,10 @@ export const useApp = () => {
   if (context === undefined) throw new Error('useApp must be used within an AppProvider');
   return context;
 };
+
+
+/**
+ * organiza o app: toda regra de metas, transações, usuário, etc fica centralizada
+ * reuso: qualquer pagina usa as mesmas funções e estados 
+ * segurança/UX: API ja recebe o token e as telas nao precisam saber dos detalhes 
+ */

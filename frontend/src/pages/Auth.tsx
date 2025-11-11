@@ -13,6 +13,19 @@ import { toast } from "sonner";
 import { login as apiLogin } from "@/services/auth";
 import { useApp } from "@/contexts/AppContext";
 
+/**
+ * estados e libs principais:
+ * 
+ * mode: alterna o formulário exibido.
+ * isLoading: controla o botão com spinner.
+ * error: mostra um <Alert /> com mensagem de erro.
+ * useNavigate(): faz o redirecionamento após login/cadastro.
+ * setCurrentUser: grava o usuário no AppContext (fica disponível no app inteiro).
+ */
+
+// define esquemas Zod para validação de formulários
+// passa como resolver para cada form 
+//garante mensagens de erro antes de chamar o back 
 const loginSchema = z.object({
   email: z.string().email("Email inválido").min(1, "Email é obrigatório"),
   password: z.string().min(6, "A senha deve ter no mínimo 6 caracteres").max(72, "A senha deve ter no máximo 72 caracteres"),
@@ -63,6 +76,9 @@ const Auth = () => {
     },
   });
 
+  //apilogin do serviço fz POST
+  //backend valide email e senha (bcrypt), gera JWT e retorna dados
+  //token é guardado no localstorage pelo serviço e depois usado nas chamadas protegidas 
   const handleLogin = async (data: LoginForm) => {
     setIsLoading(true);
     setError("");
@@ -89,6 +105,9 @@ const Auth = () => {
     }
   };
 
+
+  //aqui nao chamamos POST
+  //a ideia é no onboarding usar esse rascunho para criar o usuario completo
   const handleRegister = async (data: RegisterForm) => {
     setIsLoading(true);
     setError("");
@@ -116,6 +135,7 @@ const Auth = () => {
     }
   };
 
+  //nao vamos colocar isso 
   const handleForgotPassword = async (data: ForgotPasswordForm) => {
     setIsLoading(true);
     setError("");
@@ -188,8 +208,6 @@ const Auth = () => {
                   </p>
                 )}
               </div>
-
-              {/* 'Esqueci minha senha' removido conforme solicitado */}
 
               <Button type="submit" className="w-full" disabled={isLoading}>
                 {isLoading ? (
@@ -344,3 +362,23 @@ const Auth = () => {
 };
 
 export default Auth;
+
+
+/**
+ * renderiza uma unica pagina com 3 modos: login, cadastro 
+ * valida os formularios com zod + react-hook-form
+ * chama o servico de api para fazer login
+ *     - se sucesso, salva token/usuario no localstorage ; atualiza contexto global ; redireciona para /index
+ *     - se erro, mostra mensagem de erro
+ * 
+ * no registrar, ele nao cria o usuario agora, so salva o rascunho no localstorage e redireciona para /onboarding
+ * onde deve concluir o cadastro 
+ */
+
+// apos login bem sucedido:
+// auth.js salva token e usuario no localstorage
+// appcontext tenta carregar usuario do localstorage e disponibiliza globalmente
+// e o fetchcomauth injeta o token em todas as requisições
+
+
+
