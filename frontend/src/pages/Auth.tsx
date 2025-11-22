@@ -28,13 +28,19 @@ import { useApp } from "@/contexts/AppContext";
 //garante mensagens de erro antes de chamar o back 
 const loginSchema = z.object({
   email: z.string().email("Email inválido").min(1, "Email é obrigatório"),
-  password: z.string().min(6, "A senha deve ter no mínimo 6 caracteres").max(72, "A senha deve ter no máximo 72 caracteres"),
+  password: z
+    .string()
+    .min(6, "A senha deve ter no mínimo 6 caracteres")
+    .max(72, "A senha deve ter no máximo 72 caracteres"),
 });
 
 const registerSchema = z.object({
   name: z.string().min(1, "Nome é obrigatório"),
   email: z.string().email("Email inválido").min(1, "Email é obrigatório"),
-  password: z.string().min(6, "A senha deve ter no mínimo 6 caracteres").max(72, "A senha deve ter no máximo 72 caracteres"),
+  password: z
+    .string()
+    .min(6, "A senha deve ter no mínimo 6 caracteres")
+    .max(72, "A senha deve ter no máximo 72 caracteres"),
 });
 
 const forgotPasswordSchema = z.object({
@@ -49,11 +55,16 @@ type ForgotPasswordForm = z.infer<typeof forgotPasswordSchema>;
 const GOOGLE_AUTH_URL = (() => {
   try {
     const meta = import.meta as unknown as { env?: { VITE_API_URL?: string } };
-    const base = meta.env && meta.env.VITE_API_URL ? meta.env.VITE_API_URL : "http://localhost:8000";
-    return `${base.replace(/\/$/, "")}/auth/google`;
+    const base = meta.env?.VITE_API_URL || "http://localhost:8000";
+    const url = `${base.replace(/\/$/, "")}/auth/google/login`;
+    console.log("[AUTH] GOOGLE_AUTH_URL =", url);
+    return url;
   } catch (e) {
-    console.warn('Falha ao ler import.meta.env, usando fallback para GOOGLE_AUTH_URL', e);
-    return "http://localhost:8000/auth/google";
+    console.warn(
+      "Falha ao ler import.meta.env, usando fallback para GOOGLE_AUTH_URL",
+      e
+    );
+    return "http://localhost:8000/auth/google/login";
   }
 })();
 
@@ -71,29 +82,33 @@ const Auth = () => {
       const setLink = (rel, attrs) => {
         let el = document.querySelector(`link[rel='${rel}']`);
         if (!el) {
-          el = document.createElement('link');
+          el = document.createElement("link");
           el.rel = rel;
           document.head.appendChild(el);
         }
-        Object.entries(attrs).forEach(([k, v]) => el.setAttribute(k, v));
+        Object.entries(attrs).forEach(([k, v]) => el.setAttribute(k, v as string));
       };
 
-      setLink('icon', { href: '/favicon.png', type: 'image/png', sizes: '32x32' });
-      setLink('shortcut icon', { href: '/favicon.png' });
-      setLink('apple-touch-icon', { href: '/favicon.png', sizes: '180x180' });
+      setLink("icon", {
+        href: "/favicon.png",
+        type: "image/png",
+        sizes: "32x32",
+      });
+      setLink("shortcut icon", { href: "/favicon.png" });
+      setLink("apple-touch-icon", { href: "/favicon.png", sizes: "180x180" });
       // mask-icon for Safari pinned tabs
-      setLink('mask-icon', { href: '/placeholder.svg', color: '#4285f4' });
+      setLink("mask-icon", { href: "/placeholder.svg", color: "#4285f4" });
       // theme color
       let meta = document.querySelector("meta[name='theme-color']");
       if (!meta) {
-        meta = document.createElement('meta');
-        meta.setAttribute('name', 'theme-color');
+        meta = document.createElement("meta");
+        meta.setAttribute("name", "theme-color");
         document.head.appendChild(meta);
       }
-      meta.setAttribute('content', '#ffffff');
+      meta.setAttribute("content", "#ffffff");
     } catch (e) {
       // não quebrar a página por problemas com DOM
-      console.warn('Falha ao atualizar favicon dinamicamente:', e);
+      console.warn("Falha ao atualizar favicon dinamicamente:", e);
     }
   }, []);
 
@@ -127,7 +142,7 @@ const Auth = () => {
   const handleLogin = async (data: LoginForm) => {
     setIsLoading(true);
     setError("");
-    
+
     try {
       const res = await apiLogin(data.email, data.password);
       if (res.sucesso) {
@@ -135,7 +150,13 @@ const Auth = () => {
         // armazenamento já feito pelo serviço (localStorage)
         try {
           const usuario = res.dados?.usuario;
-          if (usuario) setCurrentUser({ id: usuario.id, nome: usuario.nome || usuario.name || '', email: usuario.email, data_criacao: usuario.data_criacao || null });
+          if (usuario)
+            setCurrentUser({
+              id: usuario.id,
+              nome: usuario.nome || usuario.name || "",
+              email: usuario.email,
+              data_criacao: usuario.data_criacao || null,
+            });
         } catch (e) {
           // ignore
         }
@@ -167,7 +188,7 @@ const Auth = () => {
   const handleRegister = async (data: RegisterForm) => {
     setIsLoading(true);
     setError("");
-    
+
     try {
       // Save registration draft locally and redirect to onboarding
       const draft = {
@@ -177,9 +198,9 @@ const Auth = () => {
         created_at: new Date().toISOString(),
       };
       try {
-        localStorage.setItem('monevo_registration', JSON.stringify(draft));
+        localStorage.setItem("monevo_registration", JSON.stringify(draft));
       } catch (e) {
-        console.warn('Could not save registration draft to localStorage', e);
+        console.warn("Could not save registration draft to localStorage", e);
       }
       toast.success("Cadastro salvo. Vamos configurar seu perfil.");
       navigate("/onboarding", { replace: true });
@@ -195,11 +216,11 @@ const Auth = () => {
   const handleForgotPassword = async (data: ForgotPasswordForm) => {
     setIsLoading(true);
     setError("");
-    
+
     try {
       // Simulated forgot password - replace with actual Supabase auth
       await new Promise((resolve) => setTimeout(resolve, 1500));
-      
+
       toast.success("Email de recuperação enviado! Verifique sua caixa de entrada.");
       setMode("login");
     } catch (err) {
@@ -222,7 +243,7 @@ const Auth = () => {
             {mode === "forgot" && "Recupere o acesso à sua conta"}
           </CardDescription>
         </CardHeader>
-        
+
         <CardContent className="space-y-4">
           {error && (
             <Alert variant="destructive">
@@ -231,7 +252,10 @@ const Auth = () => {
           )}
 
           {mode === "login" && (
-            <form onSubmit={loginForm.handleSubmit(handleLogin)} className="space-y-4">
+            <form
+              onSubmit={loginForm.handleSubmit(handleLogin)}
+              className="space-y-4"
+            >
               <div className="space-y-2">
                 <Label htmlFor="login-email">Email</Label>
                 <Input
@@ -265,7 +289,11 @@ const Auth = () => {
                 )}
               </div>
 
-              <Button type="submit" className="w-full" disabled={isLoading || isGoogleLoading}>
+              <Button
+                type="submit"
+                className="w-full"
+                disabled={isLoading || isGoogleLoading}
+              >
                 {isLoading ? (
                   <>
                     <Loader2 className="mr-2 h-4 w-4 animate-spin" />
@@ -279,7 +307,9 @@ const Auth = () => {
               {/* Separador + botão Google */}
               <div className="flex items-center gap-2 my-2">
                 <span className="h-px flex-1 bg-border" />
-                <span className="text-xs text-muted-foreground uppercase">ou</span>
+                <span className="text-xs text-muted-foreground uppercase">
+                  ou
+                </span>
                 <span className="h-px flex-1 bg-border" />
               </div>
 
@@ -304,10 +334,22 @@ const Auth = () => {
                       aria-hidden="true"
                       focusable="false"
                     >
-                      <path fill="#4285F4" d="M533.5 278.4c0-17.4-1.6-34.1-4.6-50.3H272v95.2h146.9c-6.3 34-25 62.8-53.3 82.1v68.1h86.1c50.3-46.4 80.8-114.7 80.8-195.1z"/>
-                      <path fill="#34A853" d="M272 544.3c72.6 0 133.6-24.1 178.2-65.5l-86.1-68.1c-23.9 16-54.5 25.4-92.1 25.4-70.7 0-130.6-47.8-152.1-112.1H33.9v70.7C79.1 497 169.6 544.3 272 544.3z"/>
-                      <path fill="#FBBC05" d="M119.9 321.9c-10.8-32-10.8-66.9 0-98.9V152.3H33.9c-42.7 83.7-42.7 183.1 0 266.8l86-68.2z"/>
-                      <path fill="#EA4335" d="M272 107.7c39.4 0 74.9 13.6 102.8 40.5l77.1-77.1C405.1 24.4 344.1 0 272 0 169.6 0 79.1 47.3 33.9 119.9l86 68.2C141.4 155.5 201.3 107.7 272 107.7z"/>
+                      <path
+                        fill="#4285F4"
+                        d="M533.5 278.4c0-17.4-1.6-34.1-4.6-50.3H272v95.2h146.9c-6.3 34-25 62.8-53.3 82.1v68.1h86.1c50.3-46.4 80.8-114.7 80.8-195.1z"
+                      />
+                      <path
+                        fill="#34A853"
+                        d="M272 544.3c72.6 0 133.6-24.1 178.2-65.5l-86.1-68.1c-23.9 16-54.5 25.4-92.1 25.4-70.7 0-130.6-47.8-152.1-112.1H33.9v70.7C79.1 497 169.6 544.3 272 544.3z"
+                      />
+                      <path
+                        fill="#FBBC05"
+                        d="M119.9 321.9c-10.8-32-10.8-66.9 0-98.9V152.3H33.9c-42.7 83.7-42.7 183.1 0 266.8l86-68.2z"
+                      />
+                      <path
+                        fill="#EA4335"
+                        d="M272 107.7c39.4 0 74.9 13.6 102.8 40.5l77.1-77.1C405.1 24.4 344.1 0 272 0 169.6 0 79.1 47.3 33.9 119.9l86 68.2C141.4 155.5 201.3 107.7 272 107.7z"
+                      />
                     </svg>
                     Entrar com Google
                   </>
@@ -330,7 +372,10 @@ const Auth = () => {
           )}
 
           {mode === "register" && (
-            <form onSubmit={registerForm.handleSubmit(handleRegister)} className="space-y-4">
+            <form
+              onSubmit={registerForm.handleSubmit(handleRegister)}
+              className="space-y-4"
+            >
               <div className="space-y-2">
                 <Label htmlFor="register-name">Nome</Label>
                 <Input
@@ -407,7 +452,10 @@ const Auth = () => {
           )}
 
           {mode === "forgot" && (
-            <form onSubmit={forgotPasswordForm.handleSubmit(handleForgotPassword)} className="space-y-4">
+            <form
+              onSubmit={forgotPasswordForm.handleSubmit(handleForgotPassword)}
+              className="space-y-4"
+            >
               <div className="space-y-2">
                 <Label htmlFor="forgot-email">Email</Label>
                 <Input
@@ -456,7 +504,6 @@ const Auth = () => {
 };
 
 export default Auth;
-
 
 /**
  * renderiza uma unica pagina com 3 modos: login, cadastro 
