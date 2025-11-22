@@ -55,19 +55,11 @@ type ForgotPasswordForm = z.infer<typeof forgotPasswordSchema>;
 
 // URL do backend para iniciar o fluxo de login com Google
 const GOOGLE_AUTH_URL = (() => {
-  try {
-    const meta = import.meta as unknown as { env?: { VITE_API_URL?: string } };
-    const base = meta.env?.VITE_API_URL || "http://localhost:8000";
-    const url = `${base.replace(/\/$/, "")}/auth/google/login`;
-    console.log("[AUTH] GOOGLE_AUTH_URL =", url);
-    return url;
-  } catch (e) {
-    console.warn(
-      "Falha ao ler import.meta.env, usando fallback para GOOGLE_AUTH_URL",
-      e
-    );
-    return "http://localhost:8000/auth/google/login";
-  }
+  // Vite substitui import.meta.env.VITE_API_URL em build
+  const base = import.meta.env.VITE_API_URL || "http://localhost:8000";
+  const url = `${base.replace(/\/$/, "")}/auth/google/login`;
+  console.log("[AUTH] GOOGLE_AUTH_URL =", url);
+  return url;
 })();
 
 const Auth = () => {
