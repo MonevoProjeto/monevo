@@ -1,21 +1,46 @@
 import { useState, useEffect } from "react";
-import { useLocation } from 'react-router-dom';
-import { buscarPerfil, salvarPerfil, submitOnboarding, completeOnboarding } from '@/api';
-import { useNavigate } from "react-router-dom";
-import { useApp } from '@/contexts/AppContext';
+import { useLocation, useNavigate } from "react-router-dom";
+import {
+  buscarPerfil,
+  salvarPerfil,
+  submitOnboarding,
+  completeOnboarding,
+} from "@/api";
+import { useApp } from "@/contexts/AppContext";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Progress } from "@/components/ui/progress";
-import { ChevronRight, ChevronLeft, ArrowRight, Target, Trash2 } from "lucide-react";
+import {
+  ChevronRight,
+  ChevronLeft,
+  ArrowRight,
+  Target,
+  Trash2,
+} from "lucide-react";
 import { toast } from "sonner";
 
-// Schema de validação para Etapa 1
+/* ============================
+ *  Schemas de validação
+ * ============================ */
+
 const step1Schema = z.object({
   name: z.string().min(3, "Nome deve ter no mínimo 3 caracteres"),
   email: z.string().email("E-mail inválido"),
@@ -26,7 +51,6 @@ const step1Schema = z.object({
   maritalStatus: z.string().min(1, "Estado civil é obrigatório"),
 });
 
-// Schema de validação para Etapa 2
 const step2Schema = z.object({
   currentBalance: z.string().min(1, "Saldo atual é obrigatório"),
   monthlyIncomeType: z.enum(["value", "range"]),
@@ -34,7 +58,6 @@ const step2Schema = z.object({
   monthlyIncomeRange: z.string().optional(),
 });
 
-// Schema de validação para Etapa 3
 const step3Schema = z.object({
   monthlyRevenue: z.string().min(1, "Receita mensal é obrigatória"),
   monthlyExpense: z.string().min(1, "Despesa mensal é obrigatória"),
@@ -54,20 +77,29 @@ interface OnboardingData {
   step4?: Record<string, string>;
 }
 
+type LocState = { edit?: boolean } | null;
+
+/* ============================
+ *  Componente principal
+ * ============================ */
+
 const Onboarding = () => {
   const navigate = useNavigate();
+  const location = useLocation();
+  const state = location.state as LocState;
+
   const [currentStep, setCurrentStep] = useState(1);
   const [onboardingData, setOnboardingData] = useState<OnboardingData>({});
   const [goals, setGoals] = useState<Goal[]>([]);
-  const [monthlyIncomeType, setMonthlyIncomeType] = useState<"value" | "range">("value");
-  type LocState = { edit?: boolean } | null;
-  const location = useLocation();
-  const state = location.state as { edit?: boolean } | null;
+  const [monthlyIncomeType, setMonthlyIncomeType] =
+    useState<"value" | "range">("value");
+
+  const { setCurrentUser, refreshGoals, refreshTransactions } = useApp();
 
   // Há rascunho de cadastro (fluxo email+senha)?
   const hasRegistrationDraft = (() => {
     try {
-      return !!localStorage.getItem('monevo_registration');
+      return !!localStorage.getItem("monevo_registration");
     } catch {
       return false;
     }
@@ -76,116 +108,132 @@ const Onboarding = () => {
   // Já existe token (usuário autenticado – ex: login Google)?
   const hasToken = (() => {
     try {
-      return !!localStorage.getItem('token');
+      return !!localStorage.getItem("token");
     } catch {
-    return false;
-  }
+      return false;
+    }
   })();
 
-/**
- * Regras:
- * - se vier com state.edit === true → edição (Perfil > Editar Perfil)
- * - senão, se tiver token e NÃO tiver rascunho → edição (caso típico do login Google)
- * - senão → novo usuário (cadastro normal email+senha)
- */
+  /**
+   * Regras:
+   * - se vier com state.edit === true → edição (Perfil > Editar Perfil)
+   * - senão, se tiver token e NÃO tiver rascunho → edição (caso típico do login Google)
+   * - senão → novo usuário (cadastro normal email+senha)
+   */
   const isEdit = state?.edit === true || (hasToken && !hasRegistrationDraft);
 
-  const { setCurrentUser, refreshGoals, refreshTransactions } = useApp();
-
-  // Carregar dados: se for edição, buscar do servidor; se for novo onboarding, remover dados salvos para evitar vazamento entre contas
+  // Carregar dados iniciais
   useEffect(() => {
-    if (isEdit) {
-      (async () => {
+    const carregar = async () => {
+      if (isEdit) {
+        // Edição: buscar /perfil
         try {
           const profile = await buscarPerfil();
           if (profile) {
-            // map backend profile -> onboarding shape
             const mapped: OnboardingData = {};
+
             mapped.step1 = {
-              name: profile.step1?.nome || profile.step1?.name || '',
-              email: profile.step1?.email || '',
-              password: '',
-              age: profile.step1?.idade ? String(profile.step1.idade) : '',
-              profession: profile.step1?.profissao || '',
-              cpf: profile.step1?.cpf || '',
-              maritalStatus: profile.step1?.estadoCivil || '',
+              name: profile.step1?.nome || profile.step1?.name || "",
+              email: profile.step1?.email || "",
+              password: "",
+              age: profile.step1?.idade
+                ? String(profile.step1.idade)
+                : "",
+              profession: profile.step1?.profissao || "",
+              cpf: profile.step1?.cpf || "",
+              maritalStatus: profile.step1?.estadoCivil || "",
             } as z.infer<typeof step1Schema>;
+
             if (profile.step2) {
               mapped.step2 = {
-                currentBalance: profile.step2.saldoAtual || '',
-                monthlyIncomeType: profile.step2.tipoRendaMensal || 'value',
-                monthlyIncomeValue: profile.step2.valorRendaMensal || '',
-                monthlyIncomeRange: profile.step2.faixaRendaMensal || '',
+                currentBalance: profile.step2.saldoAtual || "",
+                monthlyIncomeType:
+                  profile.step2.tipoRendaMensal || "value",
+                monthlyIncomeValue: profile.step2.valorRendaMensal || "",
+                monthlyIncomeRange: profile.step2.faixaRendaMensal || "",
               } as z.infer<typeof step2Schema>;
-              setMonthlyIncomeType(profile.step2.tipoRendaMensal || 'value');
+              setMonthlyIncomeType(
+                profile.step2.tipoRendaMensal || "value"
+              );
             }
+
             if (profile.step3) {
+              const metas: Goal[] = Array.isArray(profile.step3.metas)
+                ? profile.step3.metas.map((m: any) => ({
+                    name: String(m.nome ?? ""),
+                    value: String(m.valor ?? ""),
+                    months:
+                      m.meses != null ? String(m.meses) : "",
+                  }))
+                : [];
+
               mapped.step3 = {
-                monthlyRevenue: profile.step3.rendaMensal || '',
-                monthlyExpense: profile.step3.despesaMensal || '',
-                monthlyInvestment: profile.step3.investimentoMensal || '',
-                goals: [] as Goal[],
+                monthlyRevenue: profile.step3.rendaMensal || "",
+                monthlyExpense: profile.step3.despesaMensal || "",
+                monthlyInvestment:
+                  profile.step3.investimentoMensal || "",
+                goals: metas,
               } as z.infer<typeof step3Schema> & { goals: Goal[] };
-              if (profile.step3.metas && Array.isArray(profile.step3.metas)) {
-                const g: Goal[] = profile.step3.metas.map((m: unknown) => {
-                  const mm = m as Record<string, unknown>;
-                  return {
-                    name: String(mm['nome'] ?? ''),
-                    value: String(mm['valor'] ?? ''),
-                    months: mm['meses'] != null ? String(mm['meses']) : '',
-                  };
-                });
-                mapped.step3.goals = g;
-                setGoals(g);
-              }
+
+              setGoals(metas);
             }
+
             if (profile.step4) mapped.step4 = profile.step4;
 
             setOnboardingData(mapped);
-            // persist to localStorage so UI forms pick them as defaultValues
-            localStorage.setItem('monevo_onboarding', JSON.stringify(mapped));
+            localStorage.setItem(
+              "monevo_onboarding",
+              JSON.stringify(mapped)
+            );
           }
         } catch (e) {
-          console.warn('Erro ao buscar perfil para edição', e);
+          console.warn("Erro ao buscar perfil para edição", e);
         }
-      })();
-            return;
-          }
+        return;
+      }
 
-          // Não está em modo edição: se houver um rascunho de registro (salvo na tela de Auth), use-o para preencher a Etapa 1
-          try {
-            const reg = localStorage.getItem('monevo_registration');
-            if (reg) {
-              const parsed = JSON.parse(reg);
-              const mapped: OnboardingData = {};
-              mapped.step1 = {
-                name: parsed.name || '',
-                email: parsed.email || '',
-                password: parsed.password || '',
-                age: '',
-                profession: '',
-                cpf: '',
-                maritalStatus: '',
-              } as z.infer<typeof step1Schema>;
-              setOnboardingData(mapped);
-              // persist so forms pick up defaults
-              localStorage.setItem('monevo_onboarding', JSON.stringify(mapped));
-              return;
-            }
-          } catch (e) {
-            console.warn('Falha ao ler rascunho de registro:', e);
-          }
+      // Novo onboarding: tentar reaproveitar rascunho de registro
+      try {
+        const reg = localStorage.getItem("monevo_registration");
+        if (reg) {
+          const parsed = JSON.parse(reg);
+          const mapped: OnboardingData = {};
+          mapped.step1 = {
+            name: parsed.name || "",
+            email: parsed.email || "",
+            password: parsed.password || "",
+            age: "",
+            profession: "",
+            cpf: "",
+            maritalStatus: "",
+          } as z.infer<typeof step1Schema>;
+          setOnboardingData(mapped);
+          localStorage.setItem(
+            "monevo_onboarding",
+            JSON.stringify(mapped)
+          );
+          return;
+        }
+      } catch (e) {
+        console.warn("Falha ao ler rascunho de registro:", e);
+      }
 
-          // nenhuma informação de registro: remover dados locais antigos para evitar vazamento entre contas
-          localStorage.removeItem("monevo_onboarding");
-          setOnboardingData({});
-          setGoals([]);
-  }, [isEdit]);
+      // Nenhum dado: limpar possíveis restos
+      localStorage.removeItem("monevo_onboarding");
+      setOnboardingData({});
+      setGoals([]);
+    };
 
-  // Salvar no localStorage sempre que houver mudança
+    carregar();
+  }, [isEdit, buscarPerfil]);
+
+  // Persistir rascunho no localStorage
   useEffect(() => {
     if (Object.keys(onboardingData).length > 0) {
-      localStorage.setItem("monevo_onboarding", JSON.stringify(onboardingData));
+      localStorage.setItem(
+        "monevo_onboarding",
+        JSON.stringify(onboardingData)
+      );
     }
   }, [onboardingData]);
 
@@ -204,6 +252,7 @@ const Onboarding = () => {
   const formatCurrency = (value: string) => {
     const numbers = value.replace(/\D/g, "");
     const amount = parseFloat(numbers) / 100;
+    if (Number.isNaN(amount)) return "";
     return amount.toLocaleString("pt-BR", {
       style: "currency",
       currency: "BRL",
@@ -211,42 +260,38 @@ const Onboarding = () => {
   };
 
   const handleNext = () => {
-    if (currentStep < 4) {
-      setCurrentStep(currentStep + 1);
-    }
+    if (currentStep < 4) setCurrentStep((s) => s + 1);
   };
 
   const handleBack = () => {
-    if (currentStep > 1) {
-      setCurrentStep(currentStep - 1);
-    }
+    if (currentStep > 1) setCurrentStep((s) => s - 1);
   };
 
   const handleSkip = () => {
-    if (currentStep < 4) {
-      setCurrentStep(currentStep + 1);
-    } else {
-      handleFinish();
-    }
+    if (currentStep < 4) setCurrentStep((s) => s + 1);
+    else handleFinish();
   };
 
   const handleFinish = async () => {
-    // backup local
+    // Backup local
     localStorage.setItem("monevo_onboarding_completed", "true");
-    localStorage.setItem("monevo_user_data", JSON.stringify(onboardingData));
-
-    let success = false;
+    localStorage.setItem(
+      "monevo_user_data",
+      JSON.stringify(onboardingData)
+    );
 
     try {
-      // monta payload igual antes
-      const payload: Record<string, unknown> = {};
+      // Montar payload genérico
+      const payload: any = {};
 
       if (onboardingData.step1) {
         payload.step1 = {
           nome: onboardingData.step1.name,
           email: onboardingData.step1.email,
           senha: onboardingData.step1.password || undefined,
-          idade: onboardingData.step1.age ? Number(onboardingData.step1.age) : undefined,
+          idade: onboardingData.step1.age
+            ? Number(onboardingData.step1.age)
+            : undefined,
           profissao: onboardingData.step1.profession,
           cpf: onboardingData.step1.cpf,
           estadoCivil: onboardingData.step1.maritalStatus,
@@ -267,11 +312,13 @@ const Onboarding = () => {
           rendaMensal: onboardingData.step3.monthlyRevenue,
           despesaMensal: onboardingData.step3.monthlyExpense,
           investimentoMensal: onboardingData.step3.monthlyInvestment,
-          metas: (onboardingData.step3.goals || goals || []).map(g => ({
-            nome: g.name,
-            valor: g.value,
-            meses: g.months ? Number(g.months) : undefined,
-          })),
+          metas: (onboardingData.step3.goals || goals || []).map(
+            (g) => ({
+              nome: g.name,
+              valor: g.value,
+              meses: g.months ? Number(g.months) : undefined,
+            })
+          ),
         };
       }
 
@@ -280,65 +327,83 @@ const Onboarding = () => {
       }
 
       if (isEdit) {
-        // usuário já existente → atualiza perfil
-        await salvarPerfil(payload);
-        toast.success("Perfil atualizado com sucesso");
-        if (refreshGoals) await refreshGoals();
-        if (refreshTransactions) await refreshTransactions();
-        success = true;
-      } else {
-        // NOVO usuário → cria conta + perfil e recebe token
+        // Atualizar perfil de usuário existente
         try {
-          localStorage.removeItem("token");
-          localStorage.removeItem("usuario");
-        } catch {}
-        if (setCurrentUser) setCurrentUser(null);
-
-        const res = await submitOnboarding(payload);
-
-        if (!res || !res.token) {
-          throw new Error("Resposta do servidor sem token");
-        }
-
-        localStorage.setItem("token", res.token);
-
-        if (res.usuario) {
-          localStorage.setItem("usuario", JSON.stringify(res.usuario));
-          if (setCurrentUser) {
-            setCurrentUser({
-              id: res.usuario.id,
-              nome: res.usuario.nome || res.usuario.name || "",
-              email: res.usuario.email,
-              data_criacao: res.usuario.data_criacao || null,
-            });
-          }
-        }
-
-        if (refreshGoals) await refreshGoals();
-        if (refreshTransactions) await refreshTransactions();
-
-        try {
-          await completeOnboarding();
+          await salvarPerfil(payload);
+          toast.success("Perfil atualizado com sucesso");
+          if (refreshGoals) await refreshGoals();
+          if (refreshTransactions) await refreshTransactions();
         } catch (e) {
-          console.warn("Falha ao marcar onboarding como completo no backend:", e);
+          console.error("Falha ao atualizar perfil:", e);
+          toast.error("Falha ao salvar perfil no servidor");
         }
-
+      } else {
+        // Novo usuário: criar e logar
         try {
-          localStorage.removeItem("monevo_registration");
-          localStorage.removeItem("monevo_onboarding");
-        } catch {}
+          // Limpar sessão anterior
+          try {
+            localStorage.removeItem("token");
+            localStorage.removeItem("usuario");
+          } catch {
+            /* ignore */
+          }
+          if (setCurrentUser) setCurrentUser(null);
 
-        toast.success("Perfil criado e sessão iniciada");
-        success = true;
+          const res = await submitOnboarding(payload);
+
+          if (res && res.token) {
+            localStorage.setItem("token", res.token);
+            if (res.usuario) {
+              localStorage.setItem(
+                "usuario",
+                JSON.stringify(res.usuario)
+              );
+              if (setCurrentUser) {
+                setCurrentUser({
+                  id: res.usuario.id,
+                  nome:
+                    res.usuario.nome ||
+                    res.usuario.name ||
+                    "",
+                  email: res.usuario.email,
+                  data_criacao:
+                    res.usuario.data_criacao || null,
+                });
+              }
+            }
+
+            if (refreshGoals) await refreshGoals();
+            if (refreshTransactions) await refreshTransactions();
+
+            try {
+              await completeOnboarding();
+            } catch (e) {
+              console.warn(
+                "Falha ao marcar onboarding como completo:",
+                e
+              );
+            }
+
+            try {
+              localStorage.removeItem("monevo_registration");
+              localStorage.removeItem("monevo_onboarding");
+            } catch {
+              /* ignore */
+            }
+
+            toast.success("Perfil criado e sessão iniciada");
+          } else {
+            toast.error(
+              "Onboarding criado, mas resposta do servidor inesperada"
+            );
+          }
+        } catch (e) {
+          console.error("Falha ao submeter onboarding:", e);
+          toast.error("Falha ao criar usuário e salvar perfil");
+        }
       }
     } catch (e) {
-      console.error("Falha ao salvar onboarding/perfil:", e);
-      toast.error("Não foi possível salvar seu perfil. Tente novamente.");
-    }
-
-    // Só navega se realmente deu certo
-    if (!success) {
-      return;
+      console.warn("Erro ao tentar persistir perfil", e);
     }
 
     toast.success("Bem-vindo ao Monevo! 🎉", {
@@ -348,43 +413,40 @@ const Onboarding = () => {
     navigate("/index#dashboard", { replace: true });
   };
 
-
-    // Redirecionar para o dashboard (Index) e abrir a aba 'dashboard' via hash
-    // Use replace to evitar mantendo a página de onboarding no histórico
-    navigate("/index#dashboard", { replace: true });
-  };
-
   const addGoal = () => {
-    setGoals([...goals, { name: "", value: "", months: "" }]);
+    setGoals((g) => [...g, { name: "", value: "", months: "" }]);
   };
 
   const updateGoal = (index: number, field: keyof Goal, value: string) => {
-    const newGoals = [...goals];
-    newGoals[index][field] = value;
-    setGoals(newGoals);
+    setGoals((prev) =>
+      prev.map((g, i) =>
+        i === index ? { ...g, [field]: value } : g
+      )
+    );
   };
 
   const removeGoal = (index: number) => {
-    setGoals(goals.filter((_, i) => i !== index));
+    setGoals((prev) => prev.filter((_, i) => i !== index));
   };
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-primary-50 to-primary-100 flex items-center justify-center p-4">
       <Card className="w-full max-w-2xl shadow-xl relative">
         {isEdit && (
-            <Button 
-              variant="ghost" 
-              size="sm"
-              className="absolute top-4 right-4 text-muted-foreground"
-              onClick={() => navigate('/index#dashboard')}
-            >
-              Voltar ao Dashboard
-            </Button>
+          <Button
+            variant="ghost"
+            size="sm"
+            className="absolute top-4 right-4 text-muted-foreground"
+            onClick={() => navigate("/index#dashboard")}
+          >
+            Voltar ao Dashboard
+          </Button>
         )}
+
         <CardHeader className="space-y-4">
           <div className="flex items-center justify-between">
             <CardTitle className="text-2xl font-bold text-monevo-blue">
-              {isEdit ? 'Editar Perfil' : 'Bem-vindo ao Monevo'}
+              {isEdit ? "Editar Perfil" : "Bem-vindo ao Monevo"}
             </CardTitle>
             {!isEdit && (
               <span className="text-sm text-muted-foreground">
@@ -393,18 +455,24 @@ const Onboarding = () => {
             )}
           </div>
           <CardDescription>
-            {isEdit ? 'Altere suas informações pessoais e financeiras.' : 'Configure sua experiência financeira personalizada'}
+            {isEdit
+              ? "Altere suas informações pessoais e financeiras."
+              : "Configure sua experiência financeira personalizada"}
           </CardDescription>
-          {!isEdit && <Progress value={progressPercentage} className="h-2" />}
+          {!isEdit && (
+            <Progress value={progressPercentage} className="h-2" />
+          )}
         </CardHeader>
 
         <CardContent className="space-y-6">
-          {/* Etapa 1: Perfil */}
           {currentStep === 1 && (
             <Step1
               data={onboardingData.step1}
               onSave={(data) => {
-                setOnboardingData({ ...onboardingData, step1: data });
+                setOnboardingData((prev) => ({
+                  ...prev,
+                  step1: data,
+                }));
                 handleNext();
               }}
               onSkip={handleSkip}
@@ -412,12 +480,14 @@ const Onboarding = () => {
             />
           )}
 
-          {/* Etapa 2: Situação Financeira */}
           {currentStep === 2 && (
             <Step2
               data={onboardingData.step2}
               onSave={(data) => {
-                setOnboardingData({ ...onboardingData, step2: data });
+                setOnboardingData((prev) => ({
+                  ...prev,
+                  step2: data,
+                }));
                 handleNext();
               }}
               onBack={handleBack}
@@ -428,13 +498,15 @@ const Onboarding = () => {
             />
           )}
 
-          {/* Etapa 3: Mini Board */}
           {currentStep === 3 && (
             <Step3
               data={onboardingData.step3}
               goals={goals}
               onSave={(data) => {
-                setOnboardingData({ ...onboardingData, step3: { ...data, goals } });
+                setOnboardingData((prev) => ({
+                  ...prev,
+                  step3: { ...data, goals },
+                }));
                 handleNext();
               }}
               onBack={handleBack}
@@ -446,12 +518,14 @@ const Onboarding = () => {
             />
           )}
 
-          {/* Etapa 4: Despesas por Categoria */}
           {currentStep === 4 && (
             <Step4
               data={onboardingData.step4}
               onSave={(data) => {
-                setOnboardingData({ ...onboardingData, step4: data });
+                setOnboardingData((prev) => ({
+                  ...prev,
+                  step4: data,
+                }));
                 handleFinish();
               }}
               onBack={handleBack}
@@ -465,7 +539,10 @@ const Onboarding = () => {
   );
 };
 
-// Componente Etapa 1
+/* ============================
+ *  Step 1
+ * ============================ */
+
 const Step1 = ({
   data,
   onSave,
@@ -508,66 +585,113 @@ const Step1 = ({
           <Label htmlFor="name">Nome Completo *</Label>
           <Input id="name" {...register("name")} placeholder="João Silva" />
           {errors.name && (
-            <p className="text-sm text-destructive">{errors.name.message}</p>
+            <p className="text-sm text-destructive">
+              {errors.name.message}
+            </p>
           )}
         </div>
 
         <div className="space-y-2">
           <Label htmlFor="email">E-mail *</Label>
-          <Input id="email" type="email" {...register("email")} placeholder="joao@email.com" />
+          <Input
+            id="email"
+            type="email"
+            {...register("email")}
+            placeholder="joao@email.com"
+          />
           {errors.email && (
-            <p className="text-sm text-destructive">{errors.email.message}</p>
+            <p className="text-sm text-destructive">
+              {errors.email.message}
+            </p>
           )}
         </div>
 
         <div className="space-y-2">
           <Label htmlFor="password">Senha *</Label>
-          <Input id="password" type="password" {...register("password")} placeholder="••••••" />
+          <Input
+            id="password"
+            type="password"
+            {...register("password")}
+            placeholder="••••••"
+          />
           {errors.password && (
-            <p className="text-sm text-destructive">{errors.password.message}</p>
+            <p className="text-sm text-destructive">
+              {errors.password.message}
+            </p>
           )}
         </div>
 
         <div className="space-y-2">
           <Label htmlFor="age">Idade *</Label>
-          <Input id="age" type="number" {...register("age")} placeholder="25" />
+          <Input
+            id="age"
+            type="number"
+            {...register("age")}
+            placeholder="25"
+          />
           {errors.age && (
-            <p className="text-sm text-destructive">{errors.age.message}</p>
+            <p className="text-sm text-destructive">
+              {errors.age.message}
+            </p>
           )}
         </div>
 
         <div className="space-y-2">
           <Label htmlFor="profession">Profissão/Ocupação *</Label>
-          <Input id="profession" {...register("profession")} placeholder="Desenvolvedor" />
+          <Input
+            id="profession"
+            {...register("profession")}
+            placeholder="Desenvolvedor"
+          />
           {errors.profession && (
-            <p className="text-sm text-destructive">{errors.profession.message}</p>
+            <p className="text-sm text-destructive">
+              {errors.profession.message}
+            </p>
           )}
         </div>
 
         <div className="space-y-2">
           <Label htmlFor="cpf">CPF *</Label>
-          <Input id="cpf" {...register("cpf")} placeholder="000.000.000-00" maxLength={14} />
+          <Input
+            id="cpf"
+            {...register("cpf")}
+            placeholder="000.000.000-00"
+            maxLength={14}
+          />
           {errors.cpf && (
-            <p className="text-sm text-destructive">{errors.cpf.message}</p>
+            <p className="text-sm text-destructive">
+              {errors.cpf.message}
+            </p>
           )}
         </div>
 
         <div className="space-y-2 md:col-span-2">
           <Label htmlFor="maritalStatus">Estado Civil *</Label>
-          <Select onValueChange={(value) => setValue("maritalStatus", value)} defaultValue={data?.maritalStatus}>
+          <Select
+            onValueChange={(value) =>
+              setValue("maritalStatus", value)
+            }
+            defaultValue={data?.maritalStatus}
+          >
             <SelectTrigger>
               <SelectValue placeholder="Selecione" />
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="solteiro">Solteiro(a)</SelectItem>
               <SelectItem value="casado">Casado(a)</SelectItem>
-              <SelectItem value="divorciado">Divorciado(a)</SelectItem>
+              <SelectItem value="divorciado">
+                Divorciado(a)
+              </SelectItem>
               <SelectItem value="viuvo">Viúvo(a)</SelectItem>
-              <SelectItem value="uniao_estavel">União Estável</SelectItem>
+              <SelectItem value="uniao_estavel">
+                União Estável
+              </SelectItem>
             </SelectContent>
           </Select>
           {errors.maritalStatus && (
-            <p className="text-sm text-destructive">{errors.maritalStatus.message}</p>
+            <p className="text-sm text-destructive">
+              {errors.maritalStatus.message}
+            </p>
           )}
         </div>
       </div>
@@ -576,7 +700,10 @@ const Step1 = ({
         <Button type="button" variant="ghost" onClick={onSkip}>
           Pular por enquanto
         </Button>
-        <Button type="submit" className="bg-monevo-blue hover:bg-monevo-darkBlue">
+        <Button
+          type="submit"
+          className="bg-monevo-blue hover:bg-monevo-darkBlue"
+        >
           Avançar
           <ChevronRight className="ml-2 h-4 w-4" />
         </Button>
@@ -585,7 +712,10 @@ const Step1 = ({
   );
 };
 
-// Componente Etapa 2
+/* ============================
+ *  Step 2
+ * ============================ */
+
 const Step2 = ({
   data,
   onSave,
@@ -607,7 +737,6 @@ const Step2 = ({
     register,
     handleSubmit,
     setValue,
-    watch,
     reset,
     formState: { errors },
   } = useForm<z.infer<typeof step2Schema>>({
@@ -619,13 +748,13 @@ const Step2 = ({
     if (data) reset(data);
   }, [data, reset]);
 
-  const balanceValue = watch("currentBalance");
-
   return (
     <form onSubmit={handleSubmit(onSave)} className="space-y-6">
       <div className="space-y-4">
         <div className="space-y-2">
-          <Label htmlFor="currentBalance">Saldo Atual em Conta *</Label>
+          <Label htmlFor="currentBalance">
+            Saldo Atual em Conta *
+          </Label>
           <Input
             id="currentBalance"
             {...register("currentBalance")}
@@ -636,7 +765,9 @@ const Step2 = ({
             }}
           />
           {errors.currentBalance && (
-            <p className="text-sm text-destructive">{errors.currentBalance.message}</p>
+            <p className="text-sm text-destructive">
+              {errors.currentBalance.message}
+            </p>
           )}
         </div>
 
@@ -677,17 +808,34 @@ const Step2 = ({
               }}
             />
           ) : (
-            <Select onValueChange={(value) => setValue("monthlyIncomeRange", value)} defaultValue={data?.monthlyIncomeRange}>
+            <Select
+              onValueChange={(value) =>
+                setValue("monthlyIncomeRange", value)
+              }
+              defaultValue={data?.monthlyIncomeRange}
+            >
               <SelectTrigger>
                 <SelectValue placeholder="Selecione uma faixa" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="ate_1">Até 1 salário mínimo</SelectItem>
-                <SelectItem value="1_2">1 a 2 salários mínimos</SelectItem>
-                <SelectItem value="2_3">2 a 3 salários mínimos</SelectItem>
-                <SelectItem value="3_5">3 a 5 salários mínimos</SelectItem>
-                <SelectItem value="5_10">5 a 10 salários mínimos</SelectItem>
-                <SelectItem value="mais_10">Mais de 10 salários mínimos</SelectItem>
+                <SelectItem value="ate_1">
+                  Até 1 salário mínimo
+                </SelectItem>
+                <SelectItem value="1_2">
+                  1 a 2 salários mínimos
+                </SelectItem>
+                <SelectItem value="2_3">
+                  2 a 3 salários mínimos
+                </SelectItem>
+                <SelectItem value="3_5">
+                  3 a 5 salários mínimos
+                </SelectItem>
+                <SelectItem value="5_10">
+                  5 a 10 salários mínimos
+                </SelectItem>
+                <SelectItem value="mais_10">
+                  Mais de 10 salários mínimos
+                </SelectItem>
               </SelectContent>
             </Select>
           )}
@@ -703,7 +851,10 @@ const Step2 = ({
           <Button type="button" variant="ghost" onClick={onSkip}>
             Pular
           </Button>
-          <Button type="submit" className="bg-monevo-blue hover:bg-monevo-darkBlue">
+          <Button
+            type="submit"
+            className="bg-monevo-blue hover:bg-monevo-darkBlue"
+          >
             Avançar
             <ChevronRight className="ml-2 h-4 w-4" />
           </Button>
@@ -713,7 +864,10 @@ const Step2 = ({
   );
 };
 
-// Componente Etapa 3
+/* ============================
+ *  Step 3
+ * ============================ */
+
 const Step3 = ({
   data,
   goals,
@@ -765,7 +919,9 @@ const Step3 = ({
             }}
           />
           {errors.monthlyRevenue && (
-            <p className="text-sm text-destructive">{errors.monthlyRevenue.message}</p>
+            <p className="text-sm text-destructive">
+              {errors.monthlyRevenue.message}
+            </p>
           )}
         </div>
 
@@ -781,12 +937,16 @@ const Step3 = ({
             }}
           />
           {errors.monthlyExpense && (
-            <p className="text-sm text-destructive">{errors.monthlyExpense.message}</p>
+            <p className="text-sm text-destructive">
+              {errors.monthlyExpense.message}
+            </p>
           )}
         </div>
 
         <div className="space-y-2">
-          <Label htmlFor="monthlyInvestment">Investimento Mensal *</Label>
+          <Label htmlFor="monthlyInvestment">
+            Investimento Mensal *
+          </Label>
           <Input
             id="monthlyInvestment"
             {...register("monthlyInvestment")}
@@ -797,7 +957,9 @@ const Step3 = ({
             }}
           />
           {errors.monthlyInvestment && (
-            <p className="text-sm text-destructive">{errors.monthlyInvestment.message}</p>
+            <p className="text-sm text-destructive">
+              {errors.monthlyInvestment.message}
+            </p>
           )}
         </div>
       </div>
@@ -808,7 +970,12 @@ const Step3 = ({
             <Target className="h-5 w-5 text-monevo-blue" />
             Metas Financeiras
           </Label>
-          <Button type="button" variant="outline" size="sm" onClick={addGoal}>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={addGoal}
+          >
             Adicionar Meta
           </Button>
         </div>
@@ -820,7 +987,9 @@ const Step3 = ({
                 <Label>Nome da Meta</Label>
                 <Input
                   value={goal.name}
-                  onChange={(e) => updateGoal(index, "name", e.target.value)}
+                  onChange={(e) =>
+                    updateGoal(index, "name", e.target.value)
+                  }
                   placeholder="Ex: Viagem"
                 />
               </div>
@@ -841,7 +1010,9 @@ const Step3 = ({
                   <Input
                     type="number"
                     value={goal.months}
-                    onChange={(e) => updateGoal(index, "months", e.target.value)}
+                    onChange={(e) =>
+                      updateGoal(index, "months", e.target.value)
+                    }
                     placeholder="12"
                   />
                 </div>
@@ -869,7 +1040,10 @@ const Step3 = ({
           <Button type="button" variant="ghost" onClick={onSkip}>
             Pular
           </Button>
-          <Button type="submit" className="bg-monevo-blue hover:bg-monevo-darkBlue">
+          <Button
+            type="submit"
+            className="bg-monevo-blue hover:bg-monevo-darkBlue"
+          >
             Avançar
             <ChevronRight className="ml-2 h-4 w-4" />
           </Button>
@@ -879,7 +1053,10 @@ const Step3 = ({
   );
 };
 
-// Componente Etapa 4
+/* ============================
+ *  Step 4
+ * ============================ */
+
 const Step4 = ({
   data,
   onSave,
@@ -923,7 +1100,7 @@ const Step4 = ({
 
   const handleExpenseChange = (key: string, value: string) => {
     const formatted = formatCurrency(value);
-    setExpenses({ ...expenses, [key]: formatted });
+    setExpenses((prev) => ({ ...prev, [key]: formatted }));
   };
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -934,7 +1111,9 @@ const Step4 = ({
   return (
     <form onSubmit={handleSubmit} className="space-y-6">
       <div className="space-y-4">
-        <Label className="text-lg font-semibold">Despesas Mensais por Categoria</Label>
+        <Label className="text-lg font-semibold">
+          Despesas Mensais por Categoria
+        </Label>
         <p className="text-sm text-muted-foreground">
           Informe quanto você gasta mensalmente em cada categoria
         </p>
@@ -946,7 +1125,9 @@ const Step4 = ({
               <Input
                 id={category.key}
                 value={expenses[category.key]}
-                onChange={(e) => handleExpenseChange(category.key, e.target.value)}
+                onChange={(e) =>
+                  handleExpenseChange(category.key, e.target.value)
+                }
                 placeholder="R$ 0,00"
               />
             </div>
@@ -963,7 +1144,10 @@ const Step4 = ({
           <Button type="button" variant="ghost" onClick={onSkip}>
             Pular
           </Button>
-          <Button type="submit" className="bg-monevo-success hover:bg-monevo-success/90">
+          <Button
+            type="submit"
+            className="bg-monevo-success hover:bg-monevo-success/90"
+          >
             Finalizar
             <ArrowRight className="ml-2 h-4 w-4" />
           </Button>
