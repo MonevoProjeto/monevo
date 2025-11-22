@@ -231,13 +231,16 @@ const Onboarding = () => {
   };
 
   const handleFinish = async () => {
-    // Salvar dados finais localmente (backup) — também tentaremos persistir no servidor
+    // backup local
     localStorage.setItem("monevo_onboarding_completed", "true");
     localStorage.setItem("monevo_user_data", JSON.stringify(onboardingData));
 
+    let success = false;
+
     try {
-      // build payload used by both create (POST /onboarding) and update (PUT /perfil)
+      // monta payload igual antes
       const payload: Record<string, unknown> = {};
+
       if (onboardingData.step1) {
         payload.step1 = {
           nome: onboardingData.step1.name,
@@ -249,6 +252,7 @@ const Onboarding = () => {
           estadoCivil: onboardingData.step1.maritalStatus,
         };
       }
+
       if (onboardingData.step2) {
         payload.step2 = {
           saldoAtual: onboardingData.step2.currentBalance,
@@ -257,75 +261,93 @@ const Onboarding = () => {
           faixaRendaMensal: onboardingData.step2.monthlyIncomeRange,
         };
       }
+
       if (onboardingData.step3) {
         payload.step3 = {
           rendaMensal: onboardingData.step3.monthlyRevenue,
           despesaMensal: onboardingData.step3.monthlyExpense,
           investimentoMensal: onboardingData.step3.monthlyInvestment,
-          metas: (onboardingData.step3.goals || goals || []).map(g => ({ nome: g.name, valor: g.value, meses: g.months ? Number(g.months) : undefined }))
+          metas: (onboardingData.step3.goals || goals || []).map(g => ({
+            nome: g.name,
+            valor: g.value,
+            meses: g.months ? Number(g.months) : undefined,
+          })),
         };
       }
-      if (onboardingData.step4) payload.step4 = onboardingData.step4;
 
-      // Decide new vs edit using explicit isEdit flag so a logged-in user can still create a new account
+      if (onboardingData.step4) {
+        payload.step4 = onboardingData.step4;
+      }
+
       if (isEdit) {
-        // existing user: update profile
-        try {
-          await salvarPerfil(payload);
-          toast.success('Perfil atualizado com sucesso');
-          // refresh context data
-          if (refreshGoals) await refreshGoals();
-          if (refreshTransactions) await refreshTransactions();
-        } catch (e) {
-          console.error('Falha ao atualizar perfil:', e);
-          toast.error('Falha ao salvar perfil no servidor');
-        }
+        // usuário já existente → atualiza perfil
+        await salvarPerfil(payload);
+        toast.success("Perfil atualizado com sucesso");
+        if (refreshGoals) await refreshGoals();
+        if (refreshTransactions) await refreshTransactions();
+        success = true;
       } else {
-        // new user flow: create user + profile and get token back
+        // NOVO usuário → cria conta + perfil e recebe token
         try {
-          // Clear any existing session to avoid mixing accounts
-          try { localStorage.removeItem('token'); localStorage.removeItem('usuario'); } catch (err) { /* ignore */ }
-          if (setCurrentUser) setCurrentUser(null);
+          localStorage.removeItem("token");
+          localStorage.removeItem("usuario");
+        } catch {}
+        if (setCurrentUser) setCurrentUser(null);
 
-          const res = await submitOnboarding(payload);
-          // expected: { token: '...', usuario: { id, nome, email, ... } }
-          if (res && res.token) {
-            localStorage.setItem('token', res.token);
-            if (res.usuario) localStorage.setItem('usuario', JSON.stringify(res.usuario));
-            // update AppContext currentUser
-            if (res.usuario && setCurrentUser) {
-              setCurrentUser({ id: res.usuario.id, nome: res.usuario.nome || res.usuario.name || '', email: res.usuario.email, data_criacao: res.usuario.data_criacao || null });
-            }
-            // refresh AppContext data so dashboard shows seeded items
-            if (refreshGoals) await refreshGoals();
-            if (refreshTransactions) await refreshTransactions();
+        const res = await submitOnboarding(payload);
 
-              // Inform backend that onboarding was completed for this user
-              try {
-                await completeOnboarding();
-              } catch (e) {
-                console.warn('Falha ao marcar onboarding como completo no backend:', e);
-              }
-
-            // clear registration drafts now that account/session exists
-            try { localStorage.removeItem('monevo_registration'); } catch (e) { /* ignore */ }
-            try { localStorage.removeItem('monevo_onboarding'); } catch (e) { /* ignore */ }
-            toast.success('Perfil criado e sessão iniciada');
-          } else {
-            toast.error('Onboarding criado, mas resposta do servidor inesperada');
-          }
-        } catch (e) {
-          console.error('Falha ao submeter onboarding:', e);
-          toast.error('Falha ao criar usuário e salvar perfil');
+        if (!res || !res.token) {
+          throw new Error("Resposta do servidor sem token");
         }
+
+        localStorage.setItem("token", res.token);
+
+        if (res.usuario) {
+          localStorage.setItem("usuario", JSON.stringify(res.usuario));
+          if (setCurrentUser) {
+            setCurrentUser({
+              id: res.usuario.id,
+              nome: res.usuario.nome || res.usuario.name || "",
+              email: res.usuario.email,
+              data_criacao: res.usuario.data_criacao || null,
+            });
+          }
+        }
+
+        if (refreshGoals) await refreshGoals();
+        if (refreshTransactions) await refreshTransactions();
+
+        try {
+          await completeOnboarding();
+        } catch (e) {
+          console.warn("Falha ao marcar onboarding como completo no backend:", e);
+        }
+
+        try {
+          localStorage.removeItem("monevo_registration");
+          localStorage.removeItem("monevo_onboarding");
+        } catch {}
+
+        toast.success("Perfil criado e sessão iniciada");
+        success = true;
       }
     } catch (e) {
-      console.warn('Erro ao tentar persistir perfil', e);
+      console.error("Falha ao salvar onboarding/perfil:", e);
+      toast.error("Não foi possível salvar seu perfil. Tente novamente.");
+    }
+
+    // Só navega se realmente deu certo
+    if (!success) {
+      return;
     }
 
     toast.success("Bem-vindo ao Monevo! 🎉", {
       description: "Seu perfil foi configurado com sucesso.",
     });
+
+    navigate("/index#dashboard", { replace: true });
+  };
+
 
     // Redirecionar para o dashboard (Index) e abrir a aba 'dashboard' via hash
     // Use replace to evitar mantendo a página de onboarding no histórico
