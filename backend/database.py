@@ -290,8 +290,12 @@ class UsuarioTable(Base):
     nome = Column(String(100), nullable=False)
     email = Column(String(120), unique=True, index=True, nullable=False)
     # armazenamos o hash da senha no campo 'senha_hash' para ficar explícito
-    senha_hash = Column(String(255), nullable=False)
+    # para login via Google, o usuário pode não ter senha local
+    senha_hash = Column(String(255), nullable=True)
   #  data_criacao = Column(DateTime, default=datetime.utcnow)
+    primeiro_login = Column(Boolean, default=True)
+    # Indica em que passo do onboarding o usuário está (0 = precisa completar)
+    onboarding_step = Column(Integer, default=0)
 
 '''
 # -------------------------
@@ -357,6 +361,31 @@ class OnboardingGoalTable(Base):
     meses = Column(Integer, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
 
+
+class Orcamento(Base):
+    __tablename__ = "orcamentos"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    usuario_id = Column(Integer, ForeignKey("usuarios.id"), nullable=False, index=True)
+    categoria_id = Column(Integer, ForeignKey("categorias.id"), nullable=True)
+    categoria_chave = Column(String(50), nullable=False) # ex: 'mercado', 'lazer' (backup se id falhar)
+    valor_limite = Column(Float, nullable=False) # Valor definido no Onboarding Step 4
+    periodo = Column(String(20), default="mensal") 
+    ativo = Column(Boolean, default=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+class Notificacao(Base):
+    __tablename__ = "notificacoes"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    usuario_id = Column(Integer, ForeignKey("usuarios.id"), nullable=False, index=True)
+    tipo = Column(String(50), nullable=False) 
+    titulo = Column(String(100), nullable=False)
+    mensagem = Column(Text, nullable=False)
+    lida = Column(Boolean, default=False)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+
 # -------------------------
 # Helpers (criar/seed/db)
 # -------------------------
@@ -405,6 +434,16 @@ def create_tables():
                         print("Migração: coluna 'data_criacao' adicionada com sucesso.")
                     except Exception as e:
                         print("Aviso: falha ao adicionar data_criacao:", repr(e))
+                # Se falta onboarding_step, adiciona com default 0 (compatibilidade)
+                if 'onboarding_step' not in cols:
+                    try:
+                        print("Migração: coluna 'onboarding_step' ausente — adicionando com default 0...")
+                        with engine.connect() as conn:
+                            # SQLite aceita ADD COLUMN
+                            conn.exec_driver_sql("ALTER TABLE usuarios ADD COLUMN onboarding_step INTEGER DEFAULT 0")
+                        print("Migração: coluna 'onboarding_step' adicionada com sucesso.")
+                    except Exception as e:
+                        print("Aviso: falha ao adicionar onboarding_step:", repr(e))
         except Exception as e:
             print("Aviso: falha ao aplicar migrações simples:", repr(e))
 

@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { useLocation } from 'react-router-dom';
-import { buscarPerfil, salvarPerfil, submitOnboarding } from '@/api';
+import { buscarPerfil, salvarPerfil, submitOnboarding, completeOnboarding } from '@/api';
 import { useNavigate } from "react-router-dom";
 import { useApp } from '@/contexts/AppContext';
 import { useForm } from "react-hook-form";
@@ -62,8 +62,34 @@ const Onboarding = () => {
   const [monthlyIncomeType, setMonthlyIncomeType] = useState<"value" | "range">("value");
   type LocState = { edit?: boolean } | null;
   const location = useLocation();
-  const state = (location.state as LocState) || null;
-  const isEdit = !!(state && state.edit === true);
+  const state = location.state as { edit?: boolean } | null;
+
+  // Há rascunho de cadastro (fluxo email+senha)?
+  const hasRegistrationDraft = (() => {
+    try {
+      return !!localStorage.getItem('monevo_registration');
+    } catch {
+      return false;
+    }
+  })();
+
+  // Já existe token (usuário autenticado – ex: login Google)?
+  const hasToken = (() => {
+    try {
+      return !!localStorage.getItem('token');
+    } catch {
+    return false;
+  }
+  })();
+
+/**
+ * Regras:
+ * - se vier com state.edit === true → edição (Perfil > Editar Perfil)
+ * - senão, se tiver token e NÃO tiver rascunho → edição (caso típico do login Google)
+ * - senão → novo usuário (cadastro normal email+senha)
+ */
+  const isEdit = state?.edit === true || (hasToken && !hasRegistrationDraft);
+
   const { setCurrentUser, refreshGoals, refreshTransactions } = useApp();
 
   // Carregar dados: se for edição, buscar do servidor; se for novo onboarding, remover dados salvos para evitar vazamento entre contas
@@ -273,6 +299,13 @@ const Onboarding = () => {
             // refresh AppContext data so dashboard shows seeded items
             if (refreshGoals) await refreshGoals();
             if (refreshTransactions) await refreshTransactions();
+
+              // Inform backend that onboarding was completed for this user
+              try {
+                await completeOnboarding();
+              } catch (e) {
+                console.warn('Falha ao marcar onboarding como completo no backend:', e);
+              }
 
             // clear registration drafts now that account/session exists
             try { localStorage.removeItem('monevo_registration'); } catch (e) { /* ignore */ }

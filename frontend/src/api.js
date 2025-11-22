@@ -99,6 +99,25 @@ export async function criarTransacao(payload) {
   }
 }
 
+// DELETE /transacoes/{id} - Deletar transação
+export async function deletarTransacao(transacaoId) {
+  try {
+    const response = await fetchComAuth(`/transacoes/${transacaoId}`, {
+      method: 'DELETE',
+    });
+
+    if (!response.ok) {
+      const text = await response.text().catch(() => '');
+      throw new Error(text || `Erro ao deletar transação (${response.status})`);
+    }
+
+    return true;
+  } catch (err) {
+    console.error('Erro ao deletar transação:', err);
+    throw err;
+  }
+}
+
 
 // GET /metas - Listar todas as metas
 export async function listarMetas() {
@@ -244,6 +263,43 @@ export const submitOnboarding = async (payload) => {
     throw err;
   }
 };
+
+// GET /notificacoes - Listar as últimas notificações do usuário
+export async function listarNotificacoes() {
+  try {
+    const response = await fetchComAuth('/notificacoes');
+    return await handleResponse(response);
+  } catch (err) {
+    console.error('Erro ao listar notificações:', err);
+    throw err;
+  }
+}
+
+// PATCH /notificacoes/{id}/ler - Marcar notificação como lida
+export async function marcarNotificacaoLida(id) {
+  try {
+    const response = await fetchComAuth(`/notificacoes/${id}/ler`, {
+      method: 'PATCH',
+    });
+    return await handleResponse(response);
+  } catch (err) {
+    console.error('Erro ao marcar notificação como lida:', err);
+    throw err;
+  }
+}
+
+// PATCH /auth/complete_onboarding - marca que usuário concluiu o onboarding
+export async function completeOnboarding() {
+  try {
+    const response = await fetchComAuth(`/auth/complete_onboarding`, {
+      method: 'PATCH',
+    });
+    return await handleResponse(response);
+  } catch (err) {
+    console.error('Erro ao completar onboarding:', err);
+    throw err;
+  }
+}
 
 /**
  * camada HTTP do front

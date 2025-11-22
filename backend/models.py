@@ -294,6 +294,7 @@ class FaturaRead(BaseModel):
 class UsuarioBase(BaseModel):
     nome: str = Field(..., min_length=3, max_length=100)
     email: EmailStr
+    onboarding_step: Optional[int] = None  # passo do onboarding (0 = precisa completar)
 
 
 class UsuarioCreate(UsuarioBase):
@@ -397,6 +398,24 @@ class OnboardingUpdate(BaseModel):
     step3: Optional[OnboardingStep3] = None
     step4: Optional[dict] = None
 
+
+# Adicione em models.py
+
+class NotificacaoBase(BaseModel):
+    tipo: str
+    titulo: str
+    mensagem: str
+    lida: Optional[bool] = False
+
+class NotificacaoRead(NotificacaoBase):
+    id: int
+    created_at: datetime
+
+    class Config:
+        from_attributes = True # substitui orm_mode no Pydantic v2
+
+class NotificacaoUpdate(BaseModel):
+    lida: bool
 
 """
 Cada entidade (ex.: Meta, Conta, Categoria, Transação, Usuário) tem 3 tipos de schema Pydantic:

@@ -1,11 +1,21 @@
-from fastapi import FastAPI, HTTPException, Depends, UploadFile, File
+from fastapi import FastAPI, HTTPException, Depends, UploadFile, File, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import RedirectResponse # ADICIONADO: Para redirecionar no OAuth
 from sqlalchemy.orm import Session, joinedload
 from sqlalchemy import or_, func
 from typing import List, Optional
 import os
 from datetime import datetime, date
+
+# --- NOVAS IMPORTAÇÕES GOOGLE AUTH ---
+from starlette.middleware.sessions import SessionMiddleware
+from authlib.integrations.starlette_client import OAuth
+from jose import jwt
+from dotenv import load_dotenv
+# -------------------------------------
+
 # senha hashing via auth.criar_hash_senha
+
 
 from contextlib import asynccontextmanager
 import os, logging
@@ -20,7 +30,8 @@ from models import (
     TransacaoCreate, TransacaoRead, TransacaoUpdate,
     FaturaRead,
     Usuario, UsuarioCreate, LoginResponse,
-    OnboardingCreate, OnboardingRead, OnboardingUpdate
+    OnboardingCreate, OnboardingRead, OnboardingUpdate,
+    NotificacaoRead, NotificacaoUpdate
 )
 
 #importando as entidades e tabelas
@@ -31,6 +42,7 @@ from database import (
     get_db, create_tables, populate_initial_data,
     Conta, Recorrencia, Categoria, Transacao, MetaTable, UsuarioTable,
     OnboardingProfileTable, OnboardingGoalTable,
+    Orcamento, Notificacao
 )
 
 #autenticação 
@@ -38,6 +50,14 @@ from database import (
 #usa token JWT 
 from auth import pegar_usuario_atual, criar_hash_senha, criar_token
 from auth_routes import router as auth_router
+
+# --- CONFIGURAÇÃO GOOGLE AUTH ---
+load_dotenv()
+JWT_SECRET_KEY = os.getenv("JWT_SECRET_KEY", "secret") # Fallback seguro apenas para dev
+FRONTEND_URL = os.getenv("FRONTEND_URL", "http://localhost:5173")
+GOOGLE_CLIENT_ID = os.getenv("GOOGLE_CLIENT_ID")
+GOOGLE_CLIENT_SECRET = os.getenv("GOOGLE_CLIENT_SECRET")
+# --------------------------------
 
 #normalizando valores monetarios que vierem do front 
 #trata se vier no formato "americano" ou "brasileiro"
@@ -107,6 +127,8 @@ ALLOWED_ORIGINS = [
         "https://agreeable-bay-022216d10.3.azurestaticapps.net",
         "http://localhost:8082",
         "http://127.0.0.1:8082",
+        # ADICIONADO: Origem para callback local do Google se necessário
+        "http://localhost:8000"
 ]
 
 
@@ -122,9 +144,87 @@ app.add_middleware(
 )
 #roda em qualquer porta local e o navegador vai ter comunicação com o back 
 
+# --- ADICIONADO: Middleware de Sessão para OAuth ---
+app.add_middleware(
+    SessionMiddleware, 
+    secret_key=JWT_SECRET_KEY, 
+    session_cookie="google_oauth_session"
+)
+
+oauth = OAuth()
+oauth.register(
+    name='google',
+    client_id=GOOGLE_CLIENT_ID,
+    client_secret=GOOGLE_CLIENT_SECRET,
+    server_metadata_url='https://accounts.google.com/.well-known/openid-configuration',
+    client_kwargs={'scope': 'openid email profile'}, 
+)
+# ---------------------------------------------------
+
 
 # importa e liga as rotas de autenticação ao app principal 
 app.include_router(auth_router)
+
+
+# --- NOVAS ROTAS DE AUTENTICAÇÃO GOOGLE ---
+
+@app.get("/auth/google/login")
+async def google_login(request: Request):
+    """ Rota que inicia o processo de login no Google. """
+    # O Redirect URI deve estar cadastrado no Google Cloud Console
+    redirect_uri = request.url_for('google_auth_callback')
+    return await oauth.google.authorize_redirect(request, redirect_uri)
+
+@app.get("/auth/google/callback", name="google_auth_callback")
+async def google_auth_callback(request: Request, db: Session = Depends(get_db)):
+    """ Rota que o Google chama de volta. Processa o código e gera o JWT. """
+    try:
+        token = await oauth.google.authorize_access_token(request)
+        user_info = await oauth.google.parse_id_token(request, token) 
+        
+        email = user_info.get('email')
+        name = user_info.get('name', 'Usuário Google')
+
+        if not email:
+            return RedirectResponse(f"{FRONTEND_URL}/auth/callback?error=email_nao_encontrado", status_code=302)
+        
+        # Busca usuário no banco
+        user = db.query(UsuarioTable).filter(UsuarioTable.email == email).first()
+
+        if not user:
+            # Novo usuário via Google
+            # O onboarding tradicional usa senha, mas aqui é social. 
+            # Damos uma senha hash aleatória para satisfazer a constraint do banco.
+            temp_senha = os.urandom(16).hex()
+            senha_hash = criar_hash_senha(temp_senha)
+            
+            novo_usuario = UsuarioTable(
+                email=email, 
+                nome=name, 
+                senha_hash=senha_hash,
+                onboarding_step=0,
+            )
+            db.add(novo_usuario)
+            db.commit()
+            db.refresh(novo_usuario)
+            
+            # Redireciona para o Onboarding, passando o ID do usuário e flag oauth
+            return RedirectResponse(f"{FRONTEND_URL}/onboarding?user_id={novo_usuario.id}&oauth=google", status_code=302)
+        else:
+            user_id = user.id
+            
+        # Gera JWT compatível com o sistema (usa criar_token que inclui 'user_id')
+        token_jwt = criar_token(user_id)
+
+        # Redirecionamento de SUCESSO para o Frontend com o Token
+        return RedirectResponse(f"{FRONTEND_URL}/auth/callback?token={token_jwt}", status_code=302)
+
+    except Exception as e:
+        logger.exception(f"Erro no Google Callback: {e}")
+        return RedirectResponse(f"{FRONTEND_URL}/auth/callback?error=autenticacao_falhou", status_code=302)
+
+# ------------------------------------------
+
 
 #criado para rodar dados ao iniciar a aplicação 
 #popular tabelas para teste 
@@ -848,6 +948,37 @@ def submit_onboarding(payload: OnboardingCreate, db: Session = Depends(get_db)):
             db.add(goal)
         db.commit()
 
+    if payload.step4:
+        try:
+            # O step4 vem como um dicionário: {"mercado": "500,00", "lazer": "200,00"}
+            despesas_dict = payload.step4
+            
+            for chave_categoria, valor_str in despesas_dict.items():
+                # Converte "R$ 500,00" para float 500.00
+                valor_limite = _parse_currency(valor_str)
+                
+                # Só cria se houver um valor válido
+                if valor_limite and valor_limite > 0:
+                    # Busca a categoria no banco para pegar o ID correto
+                    cat_obj = db.query(Categoria).filter(Categoria.chave == chave_categoria).first()
+                    cat_id = cat_obj.id if cat_obj else None
+
+                    # Cria o orçamento
+                    novo_orcamento = Orcamento(
+                        usuario_id=novo_usuario.id,
+                        categoria_chave=chave_categoria, # ex: 'mercado'
+                        categoria_id=cat_id,
+                        valor_limite=valor_limite,
+                        periodo="mensal"
+                    )
+                    db.add(novo_orcamento)
+            
+            db.commit() # Salva os orçamentos no banco
+            logger.info(f"Orçamentos criados para usuário {novo_usuario.id}")
+            
+        except Exception as e:
+            logger.error(f"Erro ao criar orçamentos do onboarding: {e}")
+
     # Criar metas reais na MetaTable ligadas ao novo usuário (não apenas ao onboarding)
     metas_to_create = []
     transacoes_to_create = []
@@ -1166,6 +1297,29 @@ def atualizar_perfil(payload: OnboardingUpdate, user_id: int = Depends(pegar_usu
 
     # Reuse obter_perfil to build response
     return obter_perfil(user_id=user_id, db=db)
+
+@app.get("/notificacoes", response_model=List[NotificacaoRead])
+def listar_notificacoes(user_id: int = Depends(pegar_usuario_atual), db: Session = Depends(get_db)):
+    """Retorna as últimas 20 notificações do usuário."""
+    return db.query(Notificacao).filter(
+        Notificacao.usuario_id == user_id
+    ).order_by(Notificacao.created_at.desc()).limit(20).all()
+
+@app.patch("/notificacoes/{notificacao_id}/ler")
+def marcar_como_lida(notificacao_id: int, user_id: int = Depends(pegar_usuario_atual), db: Session = Depends(get_db)):
+    """Marca uma notificação específica como lida."""
+    n = db.query(Notificacao).filter(
+        Notificacao.id == notificacao_id, 
+        Notificacao.usuario_id == user_id
+    ).first()
+    
+    if not n:
+        raise HTTPException(status_code=404, detail="Notificação não encontrada")
+    
+    n.lida = True
+    db.commit()
+    return {"ok": True, "message": "Notificação marcada como lida"}
+
 
 
 

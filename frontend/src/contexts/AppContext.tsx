@@ -1,7 +1,7 @@
 
 /* eslint-disable react-refresh/only-export-components */
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
-import { listarMetas, criarMeta as criarMetaAPI, atualizarMeta as atualizarMetaAPI, deletarMeta as deletarMetaAPI, listarTransacoes, criarTransacao as criarTransacaoAPI } from '../api';
+import { listarMetas, criarMeta as criarMetaAPI, atualizarMeta as atualizarMetaAPI, deletarMeta as deletarMetaAPI, listarTransacoes, criarTransacao as criarTransacaoAPI, deletarTransacao as deletarTransacaoAPI } from '../api';
 import { toast } from 'sonner';
 
 
@@ -72,6 +72,7 @@ interface AppContextType {
   updateGoal: (goalId: string, goal: Partial<Goal>) => Promise<void>;
   deleteGoal: (goalId: string) => Promise<void>;
   addTransaction: (tx: Omit<Transaction, 'id'>) => Promise<void>;
+  deleteTransaction: (txId: string) => Promise<void>;
   refreshTransactions: () => Promise<void>;
   refreshGoals: () => Promise<void>;
   activatedPlans: ActivatedPlan[];
@@ -267,6 +268,21 @@ const addTransaction = async (tx: Omit<Transaction, 'id'>) => {
   }
 };
 
+const deleteTransaction = async (txId: string) => {
+  try {
+    // optimistic UI: remove immediately
+    const previous = transactions;
+    setTransactions((s) => s.filter((t) => t.id !== txId));
+    await deletarTransacaoAPI(txId);
+    toast.success('Transação excluída');
+  } catch (err) {
+    console.error('Erro ao deletar transação:', err);
+    toast.error('Não foi possível excluir a transação');
+    // restore from server
+    await loadTransactions();
+  }
+};
+
 const refreshTransactions = async () => {
   await loadTransactions();
 };
@@ -322,6 +338,7 @@ const refreshTransactions = async () => {
       deleteGoal,
       refreshGoals,
       addTransaction,
+      deleteTransaction,
       refreshTransactions,
       activatedPlans,
       activatePlan,

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -45,12 +45,57 @@ type LoginForm = z.infer<typeof loginSchema>;
 type RegisterForm = z.infer<typeof registerSchema>;
 type ForgotPasswordForm = z.infer<typeof forgotPasswordSchema>;
 
+// URL do backend para iniciar o fluxo de login com Google
+const GOOGLE_AUTH_URL = (() => {
+  try {
+    const meta = import.meta as unknown as { env?: { VITE_API_URL?: string } };
+    const base = meta.env && meta.env.VITE_API_URL ? meta.env.VITE_API_URL : "http://localhost:8000";
+    return `${base.replace(/\/$/, "")}/auth/google`;
+  } catch (e) {
+    console.warn('Falha ao ler import.meta.env, usando fallback para GOOGLE_AUTH_URL', e);
+    return "http://localhost:8000/auth/google";
+  }
+})();
+
 const Auth = () => {
   const [mode, setMode] = useState<"login" | "register" | "forgot">("login");
   const [isLoading, setIsLoading] = useState(false);
+  const [isGoogleLoading, setIsGoogleLoading] = useState(false);
   const [error, setError] = useState("");
   const navigate = useNavigate();
   const { setCurrentUser } = useApp();
+
+  // Garantir favicon ao entrar na rota /auth (corrige casos onde o SPA perdeu a referência)
+  useEffect(() => {
+    try {
+      const setLink = (rel, attrs) => {
+        let el = document.querySelector(`link[rel='${rel}']`);
+        if (!el) {
+          el = document.createElement('link');
+          el.rel = rel;
+          document.head.appendChild(el);
+        }
+        Object.entries(attrs).forEach(([k, v]) => el.setAttribute(k, v));
+      };
+
+      setLink('icon', { href: '/favicon.png', type: 'image/png', sizes: '32x32' });
+      setLink('shortcut icon', { href: '/favicon.png' });
+      setLink('apple-touch-icon', { href: '/favicon.png', sizes: '180x180' });
+      // mask-icon for Safari pinned tabs
+      setLink('mask-icon', { href: '/placeholder.svg', color: '#4285f4' });
+      // theme color
+      let meta = document.querySelector("meta[name='theme-color']");
+      if (!meta) {
+        meta = document.createElement('meta');
+        meta.setAttribute('name', 'theme-color');
+        document.head.appendChild(meta);
+      }
+      meta.setAttribute('content', '#ffffff');
+    } catch (e) {
+      // não quebrar a página por problemas com DOM
+      console.warn('Falha ao atualizar favicon dinamicamente:', e);
+    }
+  }, []);
 
   const loginForm = useForm<LoginForm>({
     resolver: zodResolver(loginSchema),
@@ -105,6 +150,17 @@ const Auth = () => {
     }
   };
 
+  // login social com Google → redireciona para o backend
+  const handleGoogleLogin = () => {
+    setError("");
+    setIsGoogleLoading(true);
+    try {
+      window.location.href = GOOGLE_AUTH_URL;
+    } catch (err) {
+      setIsGoogleLoading(false);
+      toast.error("Não foi possível iniciar o login com Google.");
+    }
+  };
 
   //aqui nao chamamos POST
   //a ideia é no onboarding usar esse rascunho para criar o usuario completo
@@ -183,7 +239,7 @@ const Auth = () => {
                   type="email"
                   placeholder="seu@email.com"
                   {...loginForm.register("email")}
-                  disabled={isLoading}
+                  disabled={isLoading || isGoogleLoading}
                 />
                 {loginForm.formState.errors.email && (
                   <p className="text-sm text-destructive">
@@ -198,9 +254,9 @@ const Auth = () => {
                   id="login-password"
                   type="password"
                   placeholder="••••••"
-                    {...loginForm.register("password")}
-                    maxLength={72}
-                  disabled={isLoading}
+                  {...loginForm.register("password")}
+                  maxLength={72}
+                  disabled={isLoading || isGoogleLoading}
                 />
                 {loginForm.formState.errors.password && (
                   <p className="text-sm text-destructive">
@@ -209,7 +265,7 @@ const Auth = () => {
                 )}
               </div>
 
-              <Button type="submit" className="w-full" disabled={isLoading}>
+              <Button type="submit" className="w-full" disabled={isLoading || isGoogleLoading}>
                 {isLoading ? (
                   <>
                     <Loader2 className="mr-2 h-4 w-4 animate-spin" />
@@ -220,6 +276,44 @@ const Auth = () => {
                 )}
               </Button>
 
+              {/* Separador + botão Google */}
+              <div className="flex items-center gap-2 my-2">
+                <span className="h-px flex-1 bg-border" />
+                <span className="text-xs text-muted-foreground uppercase">ou</span>
+                <span className="h-px flex-1 bg-border" />
+              </div>
+
+              <Button
+                type="button"
+                variant="outline"
+                className="w-full"
+                onClick={handleGoogleLogin}
+                disabled={isLoading || isGoogleLoading}
+              >
+                {isGoogleLoading ? (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    Redirecionando para o Google...
+                  </>
+                ) : (
+                  <>
+                    <svg
+                      xmlns="http://www.w3.org/2000/svg"
+                      viewBox="0 0 533.5 544.3"
+                      className="mr-3 h-4 w-4"
+                      aria-hidden="true"
+                      focusable="false"
+                    >
+                      <path fill="#4285F4" d="M533.5 278.4c0-17.4-1.6-34.1-4.6-50.3H272v95.2h146.9c-6.3 34-25 62.8-53.3 82.1v68.1h86.1c50.3-46.4 80.8-114.7 80.8-195.1z"/>
+                      <path fill="#34A853" d="M272 544.3c72.6 0 133.6-24.1 178.2-65.5l-86.1-68.1c-23.9 16-54.5 25.4-92.1 25.4-70.7 0-130.6-47.8-152.1-112.1H33.9v70.7C79.1 497 169.6 544.3 272 544.3z"/>
+                      <path fill="#FBBC05" d="M119.9 321.9c-10.8-32-10.8-66.9 0-98.9V152.3H33.9c-42.7 83.7-42.7 183.1 0 266.8l86-68.2z"/>
+                      <path fill="#EA4335" d="M272 107.7c39.4 0 74.9 13.6 102.8 40.5l77.1-77.1C405.1 24.4 344.1 0 272 0 169.6 0 79.1 47.3 33.9 119.9l86 68.2C141.4 155.5 201.3 107.7 272 107.7z"/>
+                    </svg>
+                    Entrar com Google
+                  </>
+                )}
+              </Button>
+
               <div className="text-center text-sm">
                 Não tem uma conta?{" "}
                 <Button
@@ -227,7 +321,7 @@ const Auth = () => {
                   variant="link"
                   className="px-1"
                   onClick={() => setMode("register")}
-                  disabled={isLoading}
+                  disabled={isLoading || isGoogleLoading}
                 >
                   Criar conta
                 </Button>
@@ -275,8 +369,8 @@ const Auth = () => {
                   id="register-password"
                   type="password"
                   placeholder="••••••"
-                    {...registerForm.register("password")}
-                    maxLength={72}
+                  {...registerForm.register("password")}
+                  maxLength={72}
                   disabled={isLoading}
                 />
                 {registerForm.formState.errors.password && (
@@ -379,6 +473,3 @@ export default Auth;
 // auth.js salva token e usuario no localstorage
 // appcontext tenta carregar usuario do localstorage e disponibiliza globalmente
 // e o fetchcomauth injeta o token em todas as requisições
-
-
-

@@ -1,247 +1,119 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Switch } from "@/components/ui/switch";
 import { Badge } from "@/components/ui/badge";
-import { 
-  Bell, 
-  AlertTriangle, 
-  TrendingUp, 
-  Calendar, 
-  CreditCard,
-  Target,
-  Shield,
-  Smartphone,
-  Mail,
-  Settings,
-  CheckCircle,
-  Clock,
-  DollarSign
-} from "lucide-react";
+import { Bell, AlertTriangle, CheckCircle, Info, Clock } from "lucide-react";
+// Importe sua instância de API (ex: axios)
+import { listarNotificacoes, marcarNotificacaoLida } from "@/api"; // ou o caminho correto do seu api.js
 
-interface NotificationsProps {
-  onNavigate?: (tab: string) => void;
+// Interface baseada no modelo Pydantic
+interface Notificacao {
+  id: number;
+  tipo: string;
+  titulo: string;
+  mensagem: string;
+  lida: boolean;
+  created_at: string;
 }
 
-const Notifications = ({ onNavigate }: NotificationsProps) => {
-  const [activeTab, setActiveTab] = useState<string>("recent");
-  const [notificationsEnabled, setNotificationsEnabled] = useState(true);
+const Notifications = () => {
+  const [notifications, setNotifications] = useState<Notificacao[]>([]);
+  const [loading, setLoading] = useState(true);
 
-  const recentNotifications = [
-    {
-      id: "1",
-      type: "alert",
-      icon: AlertTriangle,
-      title: "Orçamento de Alimentação Estourado",
-      description: "Você já gastou R$ 650 dos R$ 500 planejados este mês",
-      time: "Há 2 horas",
-      priority: "high",
-      color: "text-red-600",
-      bgColor: "bg-red-50",
-      action: "Ver detalhes"
-    },
-    {
-      id: "2",
-      type: "opportunity",
-      icon: TrendingUp,
-      title: "Oportunidade de Investimento",
-      description: "CDB com 12.5% a.a. disponível - R$ 180/mês a mais de renda",
-      time: "Há 4 horas",
-      priority: "medium",
-      color: "text-green-600",
-      bgColor: "bg-green-50",
-      action: "Simular"
-    },
-    {
-      id: "3",
-      type: "reminder",
-      icon: Calendar,
-      title: "Vencimento Cartão Amanhã",
-      description: "Fatura do cartão vence amanhã: R$ 1.240,50",
-      time: "Há 6 horas",
-      priority: "high",
-      color: "text-orange-600",
-      bgColor: "bg-orange-50",
-      action: "Pagar agora"
-    },
-    {
-      id: "4",
-      type: "goal",
-      icon: Target,
-      title: "Meta de Viagem: 70% Concluída!",
-      description: "Faltam apenas R$ 4.500 para sua viagem dos sonhos",
-      time: "Ontem",
-      priority: "low",
-      color: "text-blue-600",
-      bgColor: "bg-blue-50",
-      action: "Ver progresso"
-    },
-    {
-      id: "5",
-      type: "success",
-      icon: CheckCircle,
-      title: "Reserva de Emergência Atualizada",
-      description: "Parabéns! Você depositou R$ 800 na reserva este mês",
-      time: "2 dias atrás",
-      priority: "low",
-      color: "text-green-600",
-      bgColor: "bg-green-50",
-      action: "Ver reserva"
+  // Carregar notificações ao abrir a tela
+  useEffect(() => {
+    fetchNotifications();
+  }, []);
+
+  const fetchNotifications = async () => {
+    try {
+      const data = await listarNotificacoes();
+      setNotifications(data);
+    } catch (error) {
+      console.error("Erro ao carregar notificações", error);
+    } finally {
+      setLoading(false);
     }
-  ];
-
-  const smartAlerts = [
-    {
-      id: "1",
-      title: "Gastos Anômalos",
-      description: "Detectar gastos 50% acima da média mensal",
-      enabled: true,
-      category: "Prevenção"
-    },
-    {
-      id: "2",
-      title: "Metas em Risco",
-      description: "Alertar quando meta estiver fora do cronograma",
-      enabled: true,
-      category: "Metas"
-    },
-    {
-      id: "3",
-      title: "Oportunidades de Economia",
-      description: "Sugerir quando encontrar formas de economizar",
-      enabled: true,
-      category: "Economia"
-    },
-    {
-      id: "4",
-      title: "Vencimentos Importantes",
-      description: "Lembrar de faturas e pagamentos 3 dias antes",
-      enabled: true,
-      category: "Pagamentos"
-    },
-    {
-      id: "5",
-      title: "Conquistas e Marcos",
-      description: "Celebrar quando você atinge objetivos",
-      enabled: true,
-      category: "Motivação"
-    }
-  ];
-
-  const formatTime = (time: string) => {
-    return time;
   };
 
-  const getPriorityBadge = (priority: string) => {
-    switch (priority) {
-      case 'high':
-        return <Badge variant="destructive" className="text-xs">Urgente</Badge>;
-      case 'medium':
-        return <Badge variant="default" className="text-xs">Importante</Badge>;
-      default:
-        return <Badge variant="secondary" className="text-xs">Info</Badge>;
+  const markAsRead = async (id: number) => {
+    try {
+      // Atualiza no backend
+      await marcarNotificacaoLida(id);
+      // Atualiza localmente para refletir a UI instantaneamente
+      setNotifications(prev => prev.map(n => 
+        n.id === id ? { ...n, lida: true } : n
+      ));
+    } catch (error) {
+      console.error("Erro ao atualizar notificação", error);
     }
+  };
+
+  // Função auxiliar para escolher ícone e cor baseado no 'tipo' salvo no banco
+  const getStyleByType = (tipo: string) => {
+    switch (tipo) {
+      case 'orcamento_estourado':
+      case 'alerta':
+        return { icon: AlertTriangle, color: "text-red-600", bg: "bg-red-50" };
+      case 'sucesso':
+        return { icon: CheckCircle, color: "text-green-600", bg: "bg-green-50" };
+      default: // aviso, info, orcamento_alerta
+        return { icon: Info, color: "text-blue-600", bg: "bg-blue-50" };
+    }
+  };
+
+  const formatDate = (dateString: string) => {
+    return new Date(dateString).toLocaleDateString('pt-BR', {
+      day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit'
+    });
   };
 
   return (
     <div className="p-4 space-y-6 animate-fade-in">
-      {/* Header */}
       <div className="bg-gradient-to-r from-orange-500 to-red-500 rounded-lg p-6 text-white">
-        <div className="flex items-center justify-between mb-4">
+        <div className="flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <div className="p-2 bg-white/20 rounded-lg">
-              <Bell className="h-6 w-6 text-white" />
-            </div>
+            <Bell className="h-6 w-6 text-white" />
             <div>
               <h1 className="text-2xl font-bold">Notificações</h1>
-              <p className="text-orange-100">Alertas inteligentes do Monevo</p>
+              <p className="text-orange-100">Seus alertas financeiros</p>
             </div>
           </div>
-          <div className="text-right">
-            <div className="bg-white/20 rounded-full w-8 h-8 flex items-center justify-center">
-              <span className="text-sm font-bold">3</span>
-            </div>
-            <p className="text-xs text-orange-100 mt-1">Não lidas</p>
-          </div>
-        </div>
-        
-        <div className="flex items-center gap-3 bg-white/10 backdrop-blur-sm rounded-lg p-3">
-          <Smartphone className="h-5 w-5 text-orange-200" />
-          <span className="text-sm text-orange-100 flex-1">Notificações ativas</span>
-          <Switch 
-            checked={notificationsEnabled}
-            onCheckedChange={setNotificationsEnabled}
-            className="data-[state=checked]:bg-white/30"
-          />
         </div>
       </div>
 
-      {/* Tabs */}
-      <div className="flex space-x-1 bg-gray-100 rounded-lg p-1">
-        <button
-          onClick={() => setActiveTab("recent")}
-          className={`flex-1 flex items-center justify-center gap-2 py-3 px-4 rounded-md text-sm font-medium transition-all ${
-            activeTab === "recent"
-              ? "bg-white text-monevo-blue shadow-sm"
-              : "text-gray-600 hover:text-gray-900"
-          }`}
-        >
-          <Clock className="h-4 w-4" />
-          Recentes
-        </button>
-        <button
-          onClick={() => setActiveTab("settings")}
-          className={`flex-1 flex items-center justify-center gap-2 py-3 px-4 rounded-md text-sm font-medium transition-all ${
-            activeTab === "settings"
-              ? "bg-white text-monevo-blue shadow-sm"
-              : "text-gray-600 hover:text-gray-900"
-          }`}
-        >
-          <Settings className="h-4 w-4" />
-          Configurações
-        </button>
-      </div>
-
-      {/* Recent Notifications */}
-      {activeTab === "recent" && (
+      {loading ? (
+        <p className="text-center text-gray-500">Carregando...</p>
+      ) : notifications.length === 0 ? (
+        <p className="text-center text-gray-500">Nenhuma notificação no momento.</p>
+      ) : (
         <div className="space-y-4">
-          {recentNotifications.map((notification) => {
-            const IconComponent = notification.icon;
+          {notifications.map((notification) => {
+            const style = getStyleByType(notification.tipo);
+            const IconComponent = style.icon;
+            
             return (
-              <Card key={notification.id} className={`${notification.bgColor} hover:shadow-md transition-shadow`}>
+              <Card key={notification.id} className={`${style.bg} ${notification.lida ? 'opacity-60' : ''} transition-all`}>
                 <CardContent className="p-4">
                   <div className="flex items-start gap-3">
                     <div className="p-2 bg-white rounded-lg">
-                      <IconComponent className={`h-5 w-5 ${notification.color}`} />
+                      <IconComponent className={`h-5 w-5 ${style.color}`} />
                     </div>
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-start justify-between mb-1">
-                        <h3 className="font-medium text-gray-900 text-sm">{notification.title}</h3>
-                        {getPriorityBadge(notification.priority)}
+                    <div className="flex-1">
+                      <div className="flex justify-between mb-1">
+                        <h3 className="font-medium text-gray-900 text-sm">{notification.titulo}</h3>
+                        {!notification.lida && <Badge variant="destructive" className="text-xs">Novo</Badge>}
                       </div>
-                      <p className="text-sm text-gray-600 mb-2">{notification.description}</p>
+                      <p className="text-sm text-gray-600 mb-2">{notification.mensagem}</p>
                       <div className="flex items-center justify-between">
-                        <span className="text-xs text-gray-500">{formatTime(notification.time)}</span>
-                        <Button 
-                          size="sm" 
-                          variant="outline" 
-                          className="text-xs h-7"
-                          onClick={() => {
-                            if (notification.action === "Ver detalhes") {
-                              onNavigate?.("view-analysis");
-                            } else if (notification.action === "Simular") {
-                              onNavigate?.("simulate");
-                            } else if (notification.action === "Pagar agora") {
-                              onNavigate?.("pay-now");
-                            } else if (notification.action === "Ver progresso") {
-                              onNavigate?.("view-progress");
-                            } else if (notification.action === "Ver reserva") {
-                              onNavigate?.("view-reserve");
-                            }
-                          }}
-                        >
-                          {notification.action}
-                        </Button>
+                        <span className="text-xs text-gray-500 flex items-center gap-1">
+                           <Clock className="h-3 w-3" /> {formatDate(notification.created_at)}
+                        </span>
+                        {!notification.lida && (
+                          <Button size="sm" variant="outline" className="text-xs h-7" onClick={() => markAsRead(notification.id)}>
+                            Marcar como lida
+                          </Button>
+                        )}
                       </div>
                     </div>
                   </div>
@@ -249,71 +121,6 @@ const Notifications = ({ onNavigate }: NotificationsProps) => {
               </Card>
             );
           })}
-        </div>
-      )}
-
-      {/* Settings */}
-      {activeTab === "settings" && (
-        <div className="space-y-6">
-          {/* Quick Actions */}
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-monevo-blue flex items-center gap-2">
-                <Shield className="h-5 w-5" />
-                Alertas Inteligentes
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              {smartAlerts.map((alert) => (
-                <div key={alert.id} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
-                  <div className="flex-1">
-                    <h4 className="font-medium text-gray-900 text-sm">{alert.title}</h4>
-                    <p className="text-xs text-gray-600">{alert.description}</p>
-                    <Badge variant="outline" className="text-xs mt-1">
-                      {alert.category}
-                    </Badge>
-                  </div>
-                  <Switch 
-                    checked={alert.enabled}
-                    onCheckedChange={() => {}}
-                  />
-                </div>
-              ))}
-            </CardContent>
-          </Card>
-
-          {/* Notification Channels */}
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-monevo-blue flex items-center gap-2">
-                <Bell className="h-5 w-5" />
-                Canais de Notificação
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
-                <div className="flex items-center gap-3">
-                  <Smartphone className="h-5 w-5 text-gray-600" />
-                  <div>
-                    <h4 className="font-medium text-gray-900 text-sm">Push Notifications</h4>
-                    <p className="text-xs text-gray-600">Receber alertas no celular</p>
-                  </div>
-                </div>
-                <Switch checked={true} />
-              </div>
-
-              <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
-                <div className="flex items-center gap-3">
-                  <Mail className="h-5 w-5 text-gray-600" />
-                  <div>
-                    <h4 className="font-medium text-gray-900 text-sm">Email</h4>
-                    <p className="text-xs text-gray-600">Resumo semanal por email</p>
-                  </div>
-                </div>
-                <Switch checked={false} />
-              </div>
-            </CardContent>
-          </Card>
         </div>
       )}
     </div>

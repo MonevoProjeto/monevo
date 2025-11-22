@@ -1,5 +1,5 @@
 import { useState, useMemo, useEffect } from "react";
-import { ArrowUpRight, ArrowDownRight, Filter, Search, Calendar } from "lucide-react";
+import { ArrowUpRight, ArrowDownRight, Filter, Search, Calendar, Trash2 } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -7,6 +7,16 @@ import { Label } from "@/components/ui/label";
 import { Popover, PopoverTrigger, PopoverContent } from "@/components/ui/popover";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useApp } from "@/contexts/AppContext";
+import {
+  AlertDialog,
+  AlertDialogContent,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogAction,
+  AlertDialogCancel,
+} from "@/components/ui/alert-dialog";
 
 interface Transaction {
   id: string;
@@ -28,7 +38,10 @@ const Transactions = ({ initialFilter }: { initialFilter?: "all" | "income" | "e
   const [endDate, setEndDate] = useState<string>("");
 
   
-  const { transactions } = useApp();
+  const { transactions, deleteTransaction } = useApp();
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [confirmOpen, setConfirmOpen] = useState(false);
+  const [txToDelete, setTxToDelete] = useState<Transaction | null>(null);
 
   const filteredTransactions = transactions.filter((transaction) => {
     const matchesFilter = filter === "all" || transaction.type === filter;
@@ -215,39 +228,99 @@ const Transactions = ({ initialFilter }: { initialFilter?: "all" | "income" | "e
             : dateObj.toLocaleDateString("pt-BR");
 
           return (
-          <Card key={transaction.id} className="hover:shadow-md transition-shadow">
-            <CardContent className="p-4">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-4">
-                  <div className={`w-10 h-10 rounded-full flex items-center justify-center ${
-                    transaction.type === "income" 
-                      ? "bg-green-100 dark:bg-green-900" 
-                      : "bg-red-100 dark:bg-red-900"
-                  }`}>
-                    {transaction.type === "income" ? (
-                      <ArrowUpRight className="h-5 w-5 text-green-600 dark:text-green-400" />
-                    ) : (
-                      <ArrowDownRight className="h-5 w-5 text-red-600 dark:text-red-400" />
-                    )}
-                  </div>
-                  
-                  <div>
-                    <p className="font-semibold text-foreground">{transaction.description}</p>
+            <Card key={transaction.id} className="hover:shadow-md transition-shadow">
+              <CardContent className="p-4">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-4">
+                    <div
+                      className={`w-10 h-10 rounded-full flex items-center justify-center ${
+                        transaction.type === "income"
+                          ? "bg-green-100 dark:bg-green-900"
+                          : "bg-red-100 dark:bg-red-900"
+                      }`}
+                    >
+                      {transaction.type === "income" ? (
+                        <ArrowUpRight className="h-5 w-5 text-green-600 dark:text-green-400" />
+                      ) : (
+                        <ArrowDownRight className="h-5 w-5 text-red-600 dark:text-red-400" />
+                      )}
+                    </div>
+
+                    <div>
+                      <p className="font-semibold text-foreground">{transaction.description}</p>
                       <div className="flex items-center gap-2 text-sm text-muted-foreground">
                         <span>{transaction.category}</span>
                         <span>•</span>
                         <span>{formattedDate}</span>
                       </div>
+                    </div>
                   </div>
-                </div>
 
-                <p className={`text-lg font-bold ${
-                  transaction.type === "income" 
-                    ? "text-green-600 dark:text-green-400" 
-                    : "text-red-600 dark:text-red-400"
-                }`}>
-                  {transaction.type === "income" ? "+" : "-"} R$ {transaction.amount.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
-                </p>
+                  <div className="flex items-center gap-2">
+                    <p
+                      className={`text-lg font-bold ${
+                        transaction.type === "income"
+                          ? "text-green-600 dark:text-green-400"
+                          : "text-red-600 dark:text-red-400"
+                      }`}
+                    >
+                      {transaction.type === "income" ? "+" : "-"} R$ {transaction.amount.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                    </p>
+
+                    <>
+                      <Button
+                        variant="destructive"
+                        size="icon"
+                        onClick={() => {
+                          setTxToDelete(transaction);
+                          setConfirmOpen(true);
+                        }}
+                        disabled={deletingId === transaction.id}
+                        aria-label="Excluir transação"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
+
+                      <AlertDialog open={confirmOpen} onOpenChange={setConfirmOpen}>
+                        <AlertDialogContent>
+                          <AlertDialogHeader>
+                            <AlertDialogTitle>Excluir transação?</AlertDialogTitle>
+                            <AlertDialogDescription>
+                              {txToDelete ? (
+                                <>
+                                  Você tem certeza que deseja excluir "{txToDelete.description}" no valor de R$ {txToDelete.amount.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}? Esta ação não pode ser desfeita.
+                                </>
+                              ) : (
+                                "Deseja realmente excluir esta transação?"
+                              )}
+                            </AlertDialogDescription>
+                          </AlertDialogHeader>
+                          <AlertDialogFooter>
+                            <AlertDialogCancel onClick={() => setTxToDelete(null)}>
+                              Cancelar
+                            </AlertDialogCancel>
+                            <AlertDialogAction
+                              onClick={async () => {
+                                if (!txToDelete) return;
+                                try {
+                                  setDeletingId(txToDelete.id);
+                                  await deleteTransaction(txToDelete.id);
+                                } catch (e) {
+                                  // erro tratado no contexto
+                                } finally {
+                                  setDeletingId(null);
+                                  setTxToDelete(null);
+                                  setConfirmOpen(false);
+                                }
+                              }}
+                            >
+                              Excluir
+                            </AlertDialogAction>
+                          </AlertDialogFooter>
+                        </AlertDialogContent>
+                      </AlertDialog>
+                    </>
+                  </div>
                 </div>
               </CardContent>
             </Card>

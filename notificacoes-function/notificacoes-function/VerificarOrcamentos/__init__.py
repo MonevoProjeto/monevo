@@ -19,210 +19,123 @@ import os
 from datetime import datetime
 
 def main(mytimer: func.TimerRequest) -> None:
-    """
-    Function que verifica orçamentos e cria notificações.
-    Roda automaticamente de acordo com o schedule configurado.
-    """
     utc_timestamp = datetime.utcnow().isoformat()
+    logging.info(f'🚀 Função de Monitoramento iniciada em: {utc_timestamp}')
     
-    # Verifica se a execução está atrasada
-    if mytimer.past_due:
-        logging.info('⏰ O timer está atrasado!')
-    
-    logging.info(f'🚀 Iniciando verificação de orçamentos em: {utc_timestamp}')
-    
-    # Conectar ao SQL Server
+    # Pega a string de conexão das variáveis de ambiente do Azure
+    conn_str = os.environ["DATABASE_CONNECTION_STRING"]
+
+    conn = None
     try:
-        conn = pyodbc.connect(os.environ["DATABASE_CONNECTION_STRING"])
+        # Conecta ao banco
+        conn = pyodbc.connect(conn_str)
         cursor = conn.cursor()
         
-        # Verificar cada tipo de orçamento
-        verificar_orcamentos_mensais(cursor)
-        verificar_orcamentos_trimestrais(cursor)
-        verificar_orcamentos_anuais(cursor)
+        # Executa a verificação principal
+        verificar_orcamentos(cursor)
         
-        # Salvar todas as mudanças
         conn.commit()
-        logging.info('✅ Verificação concluída com sucesso!')
+        logging.info('✅ Monitoramento concluído com sucesso!')
         
     except Exception as e:
-        logging.error(f'❌ Erro na verificação: {str(e)}')
-        if conn:
-            conn.rollback()
-        raise  # Re-lança o erro para o Azure registrar
+        logging.error(f'❌ Erro na execução: {str(e)}')
+        if conn: conn.rollback()
     finally:
-        # Sempre fechar conexões
-        if cursor:
-            cursor.close()
-        if conn:
-            conn.close()
+        if conn: conn.close()
 
+def verificar_orcamentos(cursor):
+    """
+    Compara o 'valor_limite' definido no Onboarding (tabela orcamentos)
+    com o total gasto no mês atual (tabela transacoes).
+    """
+    logging.info('📊 Verificando orçamentos mensais...')
 
-def verificar_orcamentos_mensais(cursor):
-    """Verifica orçamentos mensais de todos os usuários"""
-    logging.info('📅 Verificando orçamentos mensais...')
-    
-    # Query que busca orçamentos e soma gastos do mês atual
+    # Esta query faz o "match" entre o orçamento definido e as transações do mês
     query = """
         SELECT 
-            o.id,
-            o.user_id,
-            o.categoria_id,
+            o.usuario_id,
+            o.categoria_chave,
             o.valor_limite,
-            c.nome as categoria_nome,
             ISNULL(SUM(t.valor), 0) as total_gasto
         FROM orcamentos o
-        LEFT JOIN categorias c ON o.categoria_id = c.id
-        LEFT JOIN transacoes t ON t.user_id = o.user_id 
-            AND t.categoria_id = o.categoria_id
+        -- Relaciona orçamento com transações do mesmo usuário
+        LEFT JOIN transacoes t ON 
+            t.usuario_id = o.usuario_id 
+            -- Tenta cruzar pela chave da categoria (ex: 'mercado') que salvamos no onboarding
+            -- Ajuste isso se sua transacao usa apenas ID, mas aqui assumimos que podemos cruzar chaves ou IDs
+            AND (
+                t.categoria_cache = o.categoria_chave 
+                OR 
+                t.categoria_id = o.categoria_id
+            )
             AND t.tipo = 'despesa'
-            AND DATEPART(year, t.data) = DATEPART(year, GETDATE())
-            AND DATEPART(month, t.data) = DATEPART(month, GETDATE())
-        WHERE o.periodo = 'mensal'
-            AND o.ativo = 1
-        GROUP BY o.id, o.user_id, o.categoria_id, o.valor_limite, c.nome
+            AND MONTH(t.data) = MONTH(GETDATE())
+            AND YEAR(t.data) = YEAR(GETDATE())
+        WHERE o.ativo = 1
+        GROUP BY o.usuario_id, o.categoria_chave, o.valor_limite
     """
     
     cursor.execute(query)
-    orcamentos = cursor.fetchall()
+    resultados = cursor.fetchall()
     
-    logging.info(f'📊 Encontrados {len(orcamentos)} orçamentos mensais')
-    
-    for orc in orcamentos:
-        orc_id, user_id, cat_id, limite, cat_nome, gasto = orc
+    for linha in resultados:
+        usuario_id, categoria, limite, gasto = linha
         
-        # Calcular percentual usado
-        percentual = (float(gasto) / float(limite) * 100) if float(limite) > 0 else 0
+        # Evita divisão por zero
+        if limite <= 0: 
+            continue
+            
+        percentual = (float(gasto) / float(limite)) * 100
         
-        # Criar notificação se necessário
-        if percentual >= 80 and percentual < 100:
-            # Alerta: 80% ou mais do orçamento
+        # Regra 1: Estourou o orçamento (>= 100%)
+        if percentual >= 100:
             criar_notificacao(
-                cursor, user_id, 'orcamento_alerta',
-                f'⚠️ Atenção! Você já gastou {percentual:.0f}% do orçamento mensal de {cat_nome}'
+                cursor, 
+                usuario_id, 
+                'orcamento_estourado', 
+                f'🚨 Limite de {categoria.capitalize()} excedido! Gasto: R$ {gasto:.2f} / Limite: R$ {limite:.2f}'
             )
         
-        elif percentual >= 100:
-            # Orçamento estourado
+        # Regra 2: Alerta de perigo (>= 80%)
+        elif percentual >= 80:
             criar_notificacao(
-                cursor, user_id, 'orcamento_estourado',
-                f'🚨 Orçamento mensal de {cat_nome} estourado! Você gastou R$ {float(gasto):.2f} de R$ {float(limite):.2f}'
+                cursor, 
+                usuario_id, 
+                'orcamento_alerta', 
+                f'⚠️ Atenção: Você já consumiu {percentual:.0f}% do orçamento de {categoria.capitalize()}.'
             )
 
-
-def verificar_orcamentos_trimestrais(cursor):
-    """Verifica orçamentos trimestrais de todos os usuários"""
-    logging.info('📅 Verificando orçamentos trimestrais...')
-    
-    query = """
-        SELECT 
-            o.id,
-            o.user_id,
-            o.categoria_id,
-            o.valor_limite,
-            c.nome as categoria_nome,
-            ISNULL(SUM(t.valor), 0) as total_gasto
-        FROM orcamentos o
-        LEFT JOIN categorias c ON o.categoria_id = c.id
-        LEFT JOIN transacoes t ON t.user_id = o.user_id 
-            AND t.categoria_id = o.categoria_id
-            AND t.tipo = 'despesa'
-            AND DATEPART(year, t.data) = DATEPART(year, GETDATE())
-            AND DATEPART(quarter, t.data) = DATEPART(quarter, GETDATE())
-        WHERE o.periodo = 'trimestral'
-            AND o.ativo = 1
-        GROUP BY o.id, o.user_id, o.categoria_id, o.valor_limite, c.nome
+def criar_notificacao(cursor, usuario_id, tipo, mensagem):
+    """
+    Insere o alerta na tabela 'notificacoes' para o Frontend ler depois.
+    Evita duplicar o mesmo aviso se já foi enviado nas últimas 24h.
     """
     
-    cursor.execute(query)
-    orcamentos = cursor.fetchall()
-    
-    logging.info(f'📊 Encontrados {len(orcamentos)} orçamentos trimestrais')
-    
-    for orc in orcamentos:
-        orc_id, user_id, cat_id, limite, cat_nome, gasto = orc
-        percentual = (float(gasto) / float(limite) * 100) if float(limite) > 0 else 0
-        
-        if percentual >= 80 and percentual < 100:
-            criar_notificacao(
-                cursor, user_id, 'orcamento_alerta',
-                f'⚠️ Atenção! Você já gastou {percentual:.0f}% do orçamento trimestral de {cat_nome}'
-            )
-        elif percentual >= 100:
-            criar_notificacao(
-                cursor, user_id, 'orcamento_estourado',
-                f'🚨 Orçamento trimestral de {cat_nome} estourado!'
-            )
+    # Define um título bonitinho baseado no tipo
+    titulo = "Aviso Financeiro"
+    if tipo == 'orcamento_estourado':
+        titulo = "Orçamento Estourado"
+    elif tipo == 'orcamento_alerta':
+        titulo = "Alerta de Gastos"
 
-
-def verificar_orcamentos_anuais(cursor):
-    """Verifica orçamentos anuais de todos os usuários"""
-    logging.info('📅 Verificando orçamentos anuais...')
-    
-    query = """
-        SELECT 
-            o.id,
-            o.user_id,
-            o.categoria_id,
-            o.valor_limite,
-            c.nome as categoria_nome,
-            ISNULL(SUM(t.valor), 0) as total_gasto
-        FROM orcamentos o
-        LEFT JOIN categorias c ON o.categoria_id = c.id
-        LEFT JOIN transacoes t ON t.user_id = o.user_id 
-            AND t.categoria_id = o.categoria_id
-            AND t.tipo = 'despesa'
-            AND DATEPART(year, t.data) = DATEPART(year, GETDATE())
-        WHERE o.periodo = 'anual'
-            AND o.ativo = 1
-        GROUP BY o.id, o.user_id, o.categoria_id, o.valor_limite, c.nome
-    """
-    
-    cursor.execute(query)
-    orcamentos = cursor.fetchall()
-    
-    logging.info(f'📊 Encontrados {len(orcamentos)} orçamentos anuais')
-    
-    for orc in orcamentos:
-        orc_id, user_id, cat_id, limite, cat_nome, gasto = orc
-        percentual = (float(gasto) / float(limite) * 100) if float(limite) > 0 else 0
-        
-        if percentual >= 80 and percentual < 100:
-            criar_notificacao(
-                cursor, user_id, 'orcamento_alerta',
-                f'⚠️ Atenção! Você já gastou {percentual:.0f}% do orçamento anual de {cat_nome}'
-            )
-        elif percentual >= 100:
-            criar_notificacao(
-                cursor, user_id, 'orcamento_estourado',
-                f'🚨 Orçamento anual de {cat_nome} estourado!'
-            )
-
-
-def criar_notificacao(cursor, user_id, tipo, mensagem):
-    """
-    Cria uma notificação no banco de dados.
-    Evita duplicatas verificando se já existe notificação similar não lida.
-    """
-    
-    # Verificar se já existe notificação similar nas últimas 24h
-    cursor.execute("""
+    # Verifica se já avisamos isso hoje (para não floodar o usuário)
+    check_query = """
         SELECT id FROM notificacoes 
-        WHERE user_id = ? 
-            AND tipo = ?
-            AND mensagem = ?
-            AND lida = 0
-            AND created_at > DATEADD(hour, -24, GETDATE())
-    """, (user_id, tipo, mensagem))
+        WHERE usuario_id = ? 
+          AND tipo = ? 
+          AND mensagem = ? 
+          AND created_at > DATEADD(hour, -24, GETDATE())
+    """
+    cursor.execute(check_query, (usuario_id, tipo, mensagem))
     
     if cursor.fetchone():
-        logging.info(f'⏭️ Notificação duplicada ignorada para user {user_id}')
+        logging.info(f'⏭️ Notificação duplicada ignorada para user {usuario_id}')
         return
-    
-    # Inserir nova notificação
-    cursor.execute("""
-        INSERT INTO notificacoes (user_id, tipo, mensagem, lida, created_at)
-        VALUES (?, ?, ?, 0, GETDATE())
-    """, (user_id, tipo, mensagem))
-    
-    logging.info(f'📬 Notificação criada para user {user_id}: {mensagem}')
+
+    # Insere a notificação
+    insert_query = """
+        INSERT INTO notificacoes (usuario_id, tipo, titulo, mensagem, lida, created_at)
+        VALUES (?, ?, ?, ?, 0, GETDATE())
+    """
+    cursor.execute(insert_query, (usuario_id, tipo, titulo, mensagem))
+    logging.info(f'📬 Notificação criada para user {usuario_id}: {titulo}')
