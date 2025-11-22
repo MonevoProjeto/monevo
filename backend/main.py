@@ -175,53 +175,73 @@ async def google_login(request: Request):
     redirect_uri = request.url_for('google_auth_callback')
     return await oauth.google.authorize_redirect(request, redirect_uri)
 
+from urllib.parse import quote
+
 @app.get("/auth/google/callback", name="google_auth_callback")
 async def google_auth_callback(request: Request, db: Session = Depends(get_db)):
     """ Rota que o Google chama de volta. Processa o código e gera o JWT. """
     try:
+        # troca código -> token
         token = await oauth.google.authorize_access_token(request)
-        user_info = await oauth.google.parse_id_token(request, token) 
-        
-        email = user_info.get('email')
-        name = user_info.get('name', 'Usuário Google')
+
+        # pega endpoint de userinfo da config do Google
+        userinfo_endpoint = oauth.google.server_metadata.get("userinfo_endpoint")
+        if not userinfo_endpoint:
+            raise RuntimeError("userinfo_endpoint nao encontrado")
+
+        # busca dados do usuário
+        resp = await oauth.google.get(userinfo_endpoint, token=token)
+        user_info = resp.json()
+
+        email = user_info.get("email")
+        name = user_info.get("name", "Usuário Google")
 
         if not email:
-            return RedirectResponse(f"{FRONTEND_URL}/auth/callback?error=email_nao_encontrado", status_code=302)
-        
-        # Busca usuário no banco
+            return RedirectResponse(
+                f"{FRONTEND_URL}/auth/callback?error=email_nao_encontrado",
+                status_code=302,
+            )
+
+        # procura usuário no banco
         user = db.query(UsuarioTable).filter(UsuarioTable.email == email).first()
 
         if not user:
-            # Novo usuário via Google
-            # O onboarding tradicional usa senha, mas aqui é social. 
-            # Damos uma senha hash aleatória para satisfazer a constraint do banco.
+            # novo usuário via Google
             temp_senha = os.urandom(16).hex()
             senha_hash = criar_hash_senha(temp_senha)
-            
+
             novo_usuario = UsuarioTable(
-                email=email, 
-                nome=name, 
+                email=email,
+                nome=name,
                 senha_hash=senha_hash,
                 onboarding_step=0,
             )
             db.add(novo_usuario)
             db.commit()
             db.refresh(novo_usuario)
-            
-            # Redireciona para o Onboarding, passando o ID do usuário e flag oauth
-            return RedirectResponse(f"{FRONTEND_URL}/onboarding?user_id={novo_usuario.id}&oauth=google", status_code=302)
-        else:
-            user_id = user.id
-            
-        # Gera JWT compatível com o sistema (usa criar_token que inclui 'user_id')
-        token_jwt = criar_token(user_id)
 
-        # Redirecionamento de SUCESSO para o Frontend com o Token
-        return RedirectResponse(f"{FRONTEND_URL}/auth/callback?token={token_jwt}", status_code=302)
+            # manda direto pro onboarding
+            return RedirectResponse(
+                f"{FRONTEND_URL}/onboarding?user_id={novo_usuario.id}&oauth=google",
+                status_code=302,
+            )
+
+        # usuário já existe -> gera JWT
+        token_jwt = criar_token(user.id)
+
+        return RedirectResponse(
+            f"{FRONTEND_URL}/auth/callback?token={token_jwt}",
+            status_code=302,
+        )
 
     except Exception as e:
         logger.exception(f"Erro no Google Callback: {e}")
-        return RedirectResponse(f"{FRONTEND_URL}/auth/callback?error=autenticacao_falhou", status_code=302)
+        # manda o tipo do erro na URL pra gente ver
+        err = quote(type(e).__name__)
+        return RedirectResponse(
+            f"{FRONTEND_URL}/auth/callback?error={err}",
+            status_code=302,
+        )
 
 # ------------------------------------------
 
