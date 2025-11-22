@@ -13,6 +13,8 @@ import { toast } from "sonner";
 import { login as apiLogin } from "@/services/auth";
 import { useApp } from "@/contexts/AppContext";
 
+// testando VITE_URL
+
 /**
  * estados e libs principais:
  * 
