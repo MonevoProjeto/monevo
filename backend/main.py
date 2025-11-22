@@ -135,13 +135,11 @@ ALLOWED_ORIGINS = [
 app.add_middleware(
     CORSMiddleware,
     allow_origins=ALLOWED_ORIGINS,
-    # se forem criados subdominios dinamicos, esse regex libera automaticamente (qualquer subdominio do azure.net e do localhost)
-    allow_origin_regex=r"^https:\/\/.*\\.azurestaticapps\.net$|^http:\/\/localhost(:[0-9]+)?$|^http:\/\/127\\.0\\.0\\.1(:[0-9]+)?$",
-    allow_credentials=True, #permite envio de credenciais (cookies, autenticação (JWT precisa dele))
-    allow_methods=["*"], #permite todos os metodos HTTP (GET,POST, PUT, etc) 
-    #(libera uso de todas as ações REST da API)
-    allow_headers=["*"], #permite todos os cabeçalhos HTTP (necessáiro pro JWT)
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
+
 #roda em qualquer porta local e o navegador vai ter comunicação com o back 
 
 # --- ADICIONADO: Middleware de Sessão para OAuth ---
