@@ -160,7 +160,7 @@ const Dashboard = ({ onNavigate, onSetTransactionsFilter }: DashboardProps) => {
   const catMap: Record<string, number> = {};
   (transactions || []).forEach(t => {
     if (t.type !== 'expense') return;
-    const cat = t.category || 'Outros';
+    const cat = getCategoryLabel(t);
   const amt = Math.abs(Number(t.amount ?? 0) || 0);
     catMap[cat] = (catMap[cat] || 0) + amt;
   });
@@ -332,7 +332,7 @@ const Dashboard = ({ onNavigate, onSetTransactionsFilter }: DashboardProps) => {
                     }`}></div>
                     <div>
                       <p className="font-medium text-gray-900">{transaction.description}</p>
-                      <p className="text-xs text-gray-500">{transaction.category}</p>
+                      <p className="text-xs text-gray-500">{getCategoryLabel(transaction)}</p>
                     </div>
                   </div>
                   <div className="text-right">
