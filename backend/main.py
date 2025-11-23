@@ -134,6 +134,7 @@ ALLOWED_ORIGINS = [
 
 app.add_middleware(
     CORSMiddleware,
+    allow_origin_regex=r"^https:\/\/.*\.azurestaticapps\.net$", 
     allow_origins=ALLOWED_ORIGINS,
     allow_credentials=True,
     allow_methods=["*"],
