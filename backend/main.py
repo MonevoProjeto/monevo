@@ -683,7 +683,11 @@ def listar_transacoes(
 
 
 @app.post("/transacoes", response_model=TransacaoRead, status_code=201)
-def criar_transacao(payload: TransacaoCreate, user_id: int = Depends(pegar_usuario_atual), db: Session = Depends(get_db)):
+def criar_transacao(
+    payload: TransacaoCreate,
+    user_id: int = Depends(pegar_usuario_atual),
+    db: Session = Depends(get_db)
+):
     data = payload.data or datetime.utcnow()
     novo = Transacao(
         usuario_id=user_id,
@@ -702,24 +706,39 @@ def criar_transacao(payload: TransacaoCreate, user_id: int = Depends(pegar_usuar
         status=payload.status
     )
 
-    # categoria mapping
+    # ---------------------------
+    # 🔹 Mapeamento da categoria
+    # ---------------------------
+    categoria_nome = None
+
     if payload.categoria_id:
         cat = db.query(Categoria).filter(Categoria.id == payload.categoria_id).first()
         if cat:
             novo.categoria_id = cat.id
-            novo.categoria_cache = cat.nome
+            categoria_nome = cat.nome
+
     elif payload.categoria:
+        # ex.: "Transporte" -> chave "transporte"
         chave = payload.categoria.strip().lower().replace(" ", "_")
         cat = db.query(Categoria).filter(
             or_(Categoria.chave == chave, Categoria.nome.ilike(payload.categoria.strip()))
         ).first()
         if cat:
             novo.categoria_id = cat.id
-            novo.categoria_cache = cat.nome
+            categoria_nome = cat.nome
         else:
-            novo.categoria_cache = payload.categoria.strip()
+            # não achou na tabela categorias → usa texto bruto
+            categoria_nome = payload.categoria.strip()
 
-    # calcular alocado_valor
+    # Preenche sempre o cache e o atributo "categoria" (usado pelo schema)
+    if categoria_nome:
+        novo.categoria_cache = categoria_nome
+        # atributo python, mesmo sem coluna, para aparecer no response_model
+        setattr(novo, "categoria", categoria_nome)
+
+    # ---------------------------
+    # alocado_valor
+    # ---------------------------
     if novo.alocacao_percentual:
         try:
             novo.alocado_valor = float(novo.valor) * float(novo.alocacao_percentual) / 100.0
@@ -736,10 +755,9 @@ def criar_transacao(payload: TransacaoCreate, user_id: int = Depends(pegar_usuar
 
     # atualizar meta incremental
     if novo.meta_id and novo.alocado_valor:
-        # CORREÇÃO DE SEGURANÇA: Verificar se a meta pertence ao usuário
         meta = db.query(MetaTable).filter(
             MetaTable.id == novo.meta_id,
-            MetaTable.usuario_id == user_id # <-- Verificação extra
+            MetaTable.usuario_id == user_id
         ).first()
         if meta:
             novo.meta_nome_cache = meta.titulo
@@ -749,6 +767,11 @@ def criar_transacao(payload: TransacaoCreate, user_id: int = Depends(pegar_usuar
     db.add(novo)
     db.commit()
     db.refresh(novo)
+
+    # garante que o atributo "categoria" exista também depois do refresh
+    if novo.categoria_cache and not getattr(novo, "categoria", None):
+        setattr(novo, "categoria", novo.categoria_cache)
+
     return novo
 
 
