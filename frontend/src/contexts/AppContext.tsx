@@ -194,19 +194,23 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     await loadGoals();
   };
 
-  const loadTransactions = async () => {
+   const loadTransactions = async () => {
     try {
       const data = await listarTransacoes();
+
       type BackendTx = {
         id?: number;
         usuario_id?: number;
         tipo?: string;
-        categoria?: string;
-        categoria_nome?: string;
-        descricao?: string;
-        valor?: number;
-        data?: string;
+        categoria?: string | null;
+        categoria_nome?: string | null;
+        categoria_cache?: string | null;   // ⬅️ IMPORTANTÍSSIMO
+        categoria_id?: number | null;
+        descricao?: string | null;
+        valor?: number | null;
+        data?: string | null;
       };
+
       const converted: Transaction[] = (data || []).map((t: BackendTx) => ({
         id: String(t.id ?? Date.now()),
         type:
@@ -215,17 +219,24 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
             : t.tipo === 'despesa'
             ? 'expense'
             : 'investment',
-        category: t.categoria || t.categoria_nome || '',
+        // 👇 AQUI USAMOS TUDO O QUE O BACKEND PODE MANDAR
+        category:
+          t.categoria_cache ||
+          t.categoria ||
+          t.categoria_nome ||
+          'Outros',
         description: t.descricao || '',
         amount: Number(t.valor ?? 0),
         date: t.data || new Date().toISOString(),
       }));
+  
       setTransactions(converted);
     } catch (err) {
       console.warn('Could not load transactions from API', err);
       setTransactions([]);
     }
   };
+
 
 const addTransaction = async (tx: Omit<Transaction, 'id'>) => {
   const tempId = String(Date.now());
