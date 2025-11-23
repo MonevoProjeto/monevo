@@ -160,10 +160,18 @@ const Dashboard = ({ onNavigate, onSetTransactionsFilter }: DashboardProps) => {
   const catMap: Record<string, number> = {};
   (transactions || []).forEach(t => {
     if (t.type !== 'expense') return;
-    const cat = getCategoryLabel(t);
-  const amt = Math.abs(Number(t.amount ?? 0) || 0);
+
+    const cat =
+      t.category ??
+      // campos vindos do backend
+      (t as any).categoria_cache ??
+      (t as any).categoria ??
+      "Outros";
+
+    const amt = Math.abs(Number(t.amount ?? 0) || 0);
     catMap[cat] = (catMap[cat] || 0) + amt;
   });
+
 
   const categoryArr = Object.entries(catMap).map(([name, value]) => ({ name, value }));
   categoryArr.sort((a, b) => b.value - a.value);
@@ -332,7 +340,13 @@ const Dashboard = ({ onNavigate, onSetTransactionsFilter }: DashboardProps) => {
                     }`}></div>
                     <div>
                       <p className="font-medium text-gray-900">{transaction.description}</p>
-                      <p className="text-xs text-gray-500">{getCategoryLabel(transaction)}</p>
+                      <p className="text-xs text-gray-500">
+                        {transaction.category ??
+                         (transaction as any).categoria_cache ??
+                         (transaction as any).categoria ??
+                         "Outros"}
+                      </p>
+
                     </div>
                   </div>
                   <div className="text-right">
