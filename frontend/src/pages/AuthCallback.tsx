@@ -2,16 +2,9 @@ import { useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { useApp } from "@/contexts/AppContext";
 import { toast } from "sonner";
+import { BASE_URL } from "@/api";
 
-const API_URL = (() => {
-  try {
-    const meta = import.meta as unknown as { env?: { VITE_API_URL?: string } };
-    return meta.env?.VITE_API_URL || "http://localhost:8000";
-  } catch (e) {
-    console.warn("Falha ao ler import.meta.env, usando localhost:", e);
-    return "http://localhost:8000";
-  }
-})();
+const API_URL = BASE_URL;  
 
 const AuthCallback = () => {
   const navigate = useNavigate();
