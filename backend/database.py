@@ -291,7 +291,7 @@ class UsuarioTable(Base):
     email = Column(String(120), unique=True, index=True, nullable=False)
     # armazenamos o hash da senha no campo 'senha_hash' para ficar explícito
     # para login via Google, o usuário pode não ter senha local
-    senha_hash = Column(String(255), nullable=True)
+    senha_hash = Column("senha", String(255), nullable=False)
   #  data_criacao = Column(DateTime, default=datetime.utcnow)
     primeiro_login = Column(Boolean, default=True)
     # Indica em que passo do onboarding o usuário está (0 = precisa completar)
