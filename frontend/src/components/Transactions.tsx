@@ -43,11 +43,25 @@ const Transactions = ({ initialFilter }: { initialFilter?: "all" | "income" | "e
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [txToDelete, setTxToDelete] = useState<Transaction | null>(null);
 
+  // helper para pegar o nome da categoria vindo do backend
+  const getCategoryLabel = (tx: any): string => {
+    return (
+      tx.category ??          // caso já venha normalizado
+      tx.categoria_cache ??   // campo do backend
+      tx.categoria ??         // outro campo possível
+      "Outros"
+    );
+  };
+
   const filteredTransactions = transactions.filter((transaction) => {
     const matchesFilter = filter === "all" || transaction.type === filter;
-    const matchesSearch =
-      transaction.description.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      transaction.category.toLowerCase().includes(searchTerm.toLowerCase());
+    const catLabel = getCategoryLabel(transaction);
+    const desc = (transaction.description ?? "").toLowerCase();
+    const term = searchTerm.toLowerCase();
+
+  const matchesSearch =
+    desc.includes(term) ||
+    catLabel.toLowerCase().includes(term);
 
     // Period filter (inclusive)
     let matchesPeriod = true;
@@ -226,6 +240,7 @@ const Transactions = ({ initialFilter }: { initialFilter?: "all" | "income" | "e
           const formattedDate = isNaN(dateObj.getTime())
             ? "-"
             : dateObj.toLocaleDateString("pt-BR");
+          const categoryLabel = getCategoryLabel(transaction);
 
           return (
             <Card key={transaction.id} className="hover:shadow-md transition-shadow">
@@ -249,7 +264,7 @@ const Transactions = ({ initialFilter }: { initialFilter?: "all" | "income" | "e
                     <div>
                       <p className="font-semibold text-foreground">{transaction.description}</p>
                       <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                        <span>{transaction.category}</span>
+                        <span>{categoryLabel}</span>
                         <span>•</span>
                         <span>{formattedDate}</span>
                       </div>
