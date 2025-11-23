@@ -131,9 +131,16 @@ ALLOWED_ORIGINS = [
         "http://localhost:8000"
 ]
 
-
+# 1️⃣ Session primeiro (mais "por dentro")
 app.add_middleware(
-    CORSMiddleware, 
+    SessionMiddleware,
+    secret_key=JWT_SECRET_KEY,
+    session_cookie="google_oauth_session",
+)
+
+# 2️⃣ CORS por último (mais "por fora")
+app.add_middleware(
+    CORSMiddleware,
     allow_origins=ALLOWED_ORIGINS,
     allow_origin_regex=r"^https:\/\/.*\.azurestaticapps\.net$",
     allow_credentials=True,
@@ -143,12 +150,6 @@ app.add_middleware(
 
 #roda em qualquer porta local e o navegador vai ter comunicação com o back 
 
-# --- ADICIONADO: Middleware de Sessão para OAuth ---
-app.add_middleware(
-    SessionMiddleware, 
-    secret_key=JWT_SECRET_KEY, 
-    session_cookie="google_oauth_session"
-)
 
 oauth = OAuth()
 oauth.register(
