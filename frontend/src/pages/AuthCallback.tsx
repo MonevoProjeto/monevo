@@ -104,13 +104,9 @@ const AuthCallback = () => {
         }
 
         // 4) Decidir para onde mandar
-        if (jaTemOnboarding) {
-          toast.success("Login realizado com Google!");
-          navigate("/index#dashboard", { replace: true });
-        } else {
-          toast.success("Conta criada! Vamos configurar seu perfil.");
-          navigate("/onboarding", { replace: true });
-        }
+        toast.success("Login realizado com Google! Vamos configurar seu perfil.");
+        navigate("/onboarding", { replace: true });
+        
       } catch (err) {
         console.error("Erro em AuthCallback.loadUser:", err);
         toast.error("Erro ao recuperar informações da conta.");
