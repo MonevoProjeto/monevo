@@ -82,11 +82,13 @@ const AuthCallback = () => {
 
           if (resPerfil.ok) {
             const perfil = await resPerfil.json();
-            if (perfil?.step1 && (perfil.step1.nome || perfil.step1.email)) {
+          
+            // ✅ Agora só consideramos onboarding completo se já existir step2/step3
+            // (campos que só são preenchidos quando o usuário conclui o onboarding)
+            if (perfil?.step2 || perfil?.step3) {
               jaTemOnboarding = true;
             }
           } else {
-            // 404/422 etc → tratamos como "não tem onboarding ainda"
             console.log("Perfil ainda não existe ou não encontrado:", resPerfil.status);
           }
         } catch (e) {
@@ -102,13 +104,9 @@ const AuthCallback = () => {
         }
 
         // 4) Decidir para onde mandar
-        if (jaTemOnboarding) {
-          toast.success("Login realizado com Google!");
-          navigate("/index#dashboard", { replace: true });
-        } else {
-          toast.success("Conta criada! Vamos configurar seu perfil.");
-          navigate("/onboarding", { replace: true });
-        }
+        toast.success("Login realizado com Google! Vamos configurar seu perfil.");
+        navigate("/onboarding", { replace: true });
+        
       } catch (err) {
         console.error("Erro em AuthCallback.loadUser:", err);
         toast.error("Erro ao recuperar informações da conta.");
