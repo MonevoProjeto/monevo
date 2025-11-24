@@ -82,11 +82,13 @@ const AuthCallback = () => {
 
           if (resPerfil.ok) {
             const perfil = await resPerfil.json();
-            if (perfil?.step1 && (perfil.step1.nome || perfil.step1.email)) {
+          
+            // ✅ Agora só consideramos onboarding completo se já existir step2/step3
+            // (campos que só são preenchidos quando o usuário conclui o onboarding)
+            if (perfil?.step2 || perfil?.step3) {
               jaTemOnboarding = true;
             }
           } else {
-            // 404/422 etc → tratamos como "não tem onboarding ainda"
             console.log("Perfil ainda não existe ou não encontrado:", resPerfil.status);
           }
         } catch (e) {
