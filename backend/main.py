@@ -51,6 +51,8 @@ from database import (
 from auth import pegar_usuario_atual, criar_hash_senha, criar_token
 from auth_routes import router as auth_router
 
+from ia_routes import router as ia_router
+
 # --- CONFIGURAÇÃO GOOGLE AUTH ---
 load_dotenv()
 JWT_SECRET_KEY = os.getenv("JWT_SECRET_KEY", "secret") # Fallback seguro apenas para dev
@@ -164,6 +166,8 @@ oauth.register(
 
 # importa e liga as rotas de autenticação ao app principal 
 app.include_router(auth_router)
+
+app.include_router(ia_router)
 
 
 # --- NOVAS ROTAS DE AUTENTICAÇÃO GOOGLE ---
